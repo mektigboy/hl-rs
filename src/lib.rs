@@ -1,3 +1,5 @@
+pub mod utils;
+
 mod clients;
 mod consts;
 mod eip712;
@@ -5,7 +7,6 @@ mod error;
 mod http;
 mod prelude;
 mod types;
-mod utils;
 
 pub use clients::{
     exchange::{self, ExchangeClient},
