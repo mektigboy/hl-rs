@@ -12,6 +12,10 @@ use crate::{
     },
 };
 
+mod perp_deploy;
+
+pub use perp_deploy::*;
+
 fn eip_712_domain(chain_id: u64) -> Eip712Domain {
     eip712_domain! {
         name: "HyperliquidSignTransaction",

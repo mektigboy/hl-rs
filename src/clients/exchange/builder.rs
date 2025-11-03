@@ -42,6 +42,7 @@ impl ActionKind {
                 | ActionKind::EvmUserModify(_)
                 | ActionKind::ScheduleCancel(_)
                 | ActionKind::ClaimRewards(_)
+                | ActionKind::PerpDeploy(_)
         )
     }
 

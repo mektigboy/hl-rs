@@ -5,8 +5,8 @@ use crate::{
     Error, Result,
     exchange::requests::{
         ApproveAgent, ApproveBuilderFee, BulkCancel, BulkCancelCloid, BulkModify, BulkOrder,
-        ClaimRewards, EvmUserModify, ScheduleCancel, SendAsset, SetReferrer, SpotSend, SpotUser,
-        UpdateIsolatedMargin, UpdateLeverage, UsdSend, VaultTransfer, Withdraw3,
+        ClaimRewards, EvmUserModify, PerpDeploy, ScheduleCancel, SendAsset, SetReferrer, SpotSend,
+        SpotUser, UpdateIsolatedMargin, UpdateLeverage, UsdSend, VaultTransfer, Withdraw3,
     },
 };
 
@@ -32,6 +32,7 @@ pub enum ActionKind {
     EvmUserModify(EvmUserModify),
     ScheduleCancel(ScheduleCancel),
     ClaimRewards(ClaimRewards),
+    PerpDeploy(PerpDeploy),
 }
 
 impl ActionKind {
