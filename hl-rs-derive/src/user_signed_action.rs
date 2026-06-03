@@ -178,92 +178,11 @@ fn build_struct_hash_tokens(
     Ok((tokens, has_nonce))
 }
 
-fn build_multisig_hash_tokens(
-    fields: &syn::FieldsNamed,
-    multisig_types_preimage: &str,
-    multisig_types_lit: &syn::LitStr,
-) -> Result<Vec<TokenStream2>, syn::Error> {
-    let (field_map, _has_nonce) = build_field_map(fields)?;
-    let params = parse_types_params(multisig_types_preimage)?;
-    let mut tokens = Vec::with_capacity(params.len() + 1);
-
-    tokens.push(quote! {
-        alloy::dyn_abi::DynSolValue::FixedBytes(
-            alloy::primitives::keccak256(#multisig_types_lit.as_bytes()),
-            32,
-        )
-    });
-
-    for (ty, name) in params {
-        let dyn_sol_type = eip712_type_to_dyn_sol_type(&ty);
-
-        match name.as_str() {
-            // Special case: hyperliquidChain comes from meta.signing_chain
-            "hyperliquidChain" => {
-                tokens.push(quote! {
-                    meta.signing_chain.get_hyperliquid_chain().to_abi_value(&#dyn_sol_type)?
-                });
-            }
-            // Special case: payloadMultiSigUser is a function parameter
-            "payloadMultiSigUser" => {
-                tokens.push(quote! {
-                    payload_multi_sig_user.to_abi_value(&#dyn_sol_type)?
-                });
-            }
-            // Special case: outerSigner is a function parameter
-            "outerSigner" => {
-                tokens.push(quote! {
-                    outer_signer.to_abi_value(&#dyn_sol_type)?
-                });
-            }
-            // Special case: nonce/time field - must unwrap Option<u64>
-            "nonce" | "time" => {
-                let field = field_map.get("nonce").ok_or_else(|| {
-                    syn::Error::new(proc_macro2::Span::call_site(), "nonce field missing")
-                })?;
-                let ident = &field.ident;
-                let expr = if field.is_option {
-                    quote! {
-                        {
-                            let nonce = self.#ident.ok_or(crate::Error::GenericParse("nonce must be set before signing".to_string()))?;
-                            nonce.to_abi_value(&#dyn_sol_type)?
-                        }
-                    }
-                } else {
-                    quote! {
-                        self.#ident.to_abi_value(&#dyn_sol_type)?
-                    }
-                };
-                tokens.push(expr);
-            }
-            // Regular field - use ToAbiValue trait
-            _ => {
-                let field = lookup_field(&field_map, &name).ok_or_else(|| {
-                    syn::Error::new(
-                        proc_macro2::Span::call_site(),
-                        format!(
-                            "field not found: {name} (tried snake_case: {})",
-                            name.to_snake_case()
-                        ),
-                    )
-                })?;
-                let ident = &field.ident;
-                tokens.push(quote! {
-                    self.#ident.to_abi_value(&#dyn_sol_type)?
-                });
-            }
-        }
-    }
-
-    Ok(tokens)
-}
-
 fn build_user_signed_action_impl(
     ident: &syn::Ident,
     action_type_lit: &syn::LitStr,
     types_lit: &syn::LitStr,
     struct_hash_tokens: &[TokenStream2],
-    multisig_hash_tokens: &[TokenStream2],
     uses_time: bool,
 ) -> TokenStream2 {
     quote! {
@@ -301,37 +220,6 @@ fn build_user_signed_action_impl(
                     self,
                     meta.signing_chain,
                 )
-            }
-
-            fn multisig_signing_hash(
-                &self,
-                meta: &crate::actions::SigningMeta,
-                payload_multi_sig_user: alloy::primitives::Address,
-                outer_signer: alloy::primitives::Address,
-            ) -> Result<alloy::primitives::B256, crate::Error> {
-                use crate::ToAbiValue;
-                let values = vec![
-                    #(#multisig_hash_tokens,)*
-                ];
-
-                let domain = alloy::sol_types::eip712_domain! {
-                    name: "HyperliquidSignTransaction",
-                    version: "1",
-                    chain_id: meta.signing_chain.get_signature_chain_id(),
-                    verifying_contract: alloy::primitives::Address::ZERO,
-                };
-                let domain_hash = domain.hash_struct();
-
-                let tuple = alloy::dyn_abi::DynSolValue::Tuple(values);
-                let struct_hash = alloy::primitives::keccak256(tuple.abi_encode());
-
-                let mut digest = [0u8; 66];
-                digest[0] = 0x19;
-                digest[1] = 0x01;
-                digest[2..34].copy_from_slice(&domain_hash[..]);
-                digest[34..66].copy_from_slice(&struct_hash[..]);
-
-                Ok(alloy::primitives::keccak256(&digest))
             }
 
             fn nonce(&self) -> Option<u64> {
@@ -396,12 +284,6 @@ pub(crate) fn derive_user_signed_action(input: TokenStream) -> TokenStream {
             Err(err) => return err.to_compile_error().into(),
         };
 
-    let (multisig_types_preimage, _) = match build_multisig_types(&full_types_preimage) {
-        Ok(result) => result,
-        Err(err) => return err.to_compile_error().into(),
-    };
-    let multisig_types_lit = LitStr::new(&multisig_types_preimage, ident.span());
-
     if !has_nonce {
         return syn::Error::new(
             input.ident.span(),
@@ -411,18 +293,11 @@ pub(crate) fn derive_user_signed_action(input: TokenStream) -> TokenStream {
         .into();
     }
 
-    let multisig_hash_tokens =
-        match build_multisig_hash_tokens(fields, &multisig_types_preimage, &multisig_types_lit) {
-            Ok(result) => result,
-            Err(err) => return err.to_compile_error().into(),
-        };
-
     build_user_signed_action_impl(
         ident,
         &action_type_lit,
         &types_lit,
         &struct_hash_tokens,
-        &multisig_hash_tokens,
         uses_time,
     )
     .into()
@@ -443,76 +318,4 @@ fn parse_types_params(full_types_preimage: &str) -> Result<Vec<(String, String)>
     }
 
     Ok(parsed_params)
-}
-
-fn build_multisig_types(
-    full_types_preimage: &str,
-) -> Result<(String, Vec<(String, String)>), syn::Error> {
-    let (prefix, rest) = full_types_preimage
-        .split_once(':')
-        .ok_or_else(|| syn::Error::new(proc_macro2::Span::call_site(), "types missing ':'"))?;
-    let (struct_name, _) = rest
-        .split_once('(')
-        .ok_or_else(|| syn::Error::new(proc_macro2::Span::call_site(), "types missing '('"))?;
-
-    let parsed_params = parse_types_params(full_types_preimage)?;
-
-    let mut multisig_params: Vec<(String, String)> = Vec::new();
-    let mut enriched = false;
-    for (ty, name) in parsed_params {
-        multisig_params.push((ty, name.clone()));
-        if name == "hyperliquidChain" {
-            multisig_params.push(("address".to_string(), "payloadMultiSigUser".to_string()));
-            multisig_params.push(("address".to_string(), "outerSigner".to_string()));
-            enriched = true;
-        }
-    }
-
-    let param_list = if enriched {
-        multisig_params
-            .iter()
-            .map(|(ty, name)| format!("{ty} {name}"))
-            .collect::<Vec<_>>()
-            .join(",")
-    } else {
-        multisig_params
-            .iter()
-            .map(|(ty, name)| format!("{ty} {name}"))
-            .collect::<Vec<_>>()
-            .join(",")
-    };
-
-    let multisig_types = format!("{prefix}:{struct_name}({param_list})");
-    Ok((multisig_types, multisig_params))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::build_multisig_types;
-
-    #[test]
-    fn test_build_multisig_types_inserts_after_hyperliquid_chain() {
-        let input = "HyperliquidTransaction:SendAsset(string hyperliquidChain,string destination,string amount,uint64 nonce)";
-        let (full_types, params) = build_multisig_types(input).unwrap();
-
-        assert_eq!(
-            full_types,
-            "HyperliquidTransaction:SendAsset(string hyperliquidChain,address payloadMultiSigUser,address outerSigner,string destination,string amount,uint64 nonce)"
-        );
-        assert_eq!(params[0].0, "string");
-        assert_eq!(params[0].1, "hyperliquidChain");
-        assert_eq!(params[1].0, "address");
-        assert_eq!(params[1].1, "payloadMultiSigUser");
-        assert_eq!(params[2].0, "address");
-        assert_eq!(params[2].1, "outerSigner");
-    }
-
-    #[test]
-    fn test_build_multisig_types_no_hyperliquid_chain() {
-        let input = "HyperliquidTransaction:Other(uint64 nonce)";
-        let (full_types, params) = build_multisig_types(input).unwrap();
-
-        assert_eq!(full_types, "HyperliquidTransaction:Other(uint64 nonce)");
-        assert_eq!(params, vec![("uint64".to_string(), "nonce".to_string())]);
-    }
 }

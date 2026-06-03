@@ -2,7 +2,7 @@ use crate::actions::serialization::ser_lowercase;
 use alloy::primitives::Address;
 use hl_rs_derive::L1Action;
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 /// Register a new asset on a perp DEX.
 ///
@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize, Serializer};
 /// use rust_decimal_macros::dec;
 ///
 /// let oracle_updater = Address::repeat_byte(0x42);
-/// let schema = PerpDexSchema::new("My DEX", "@1")  // USDC collateral
+/// let schema = PerpDexSchema::new("My DEX", 1)  // USDC collateral
 ///     .with_oracle_updater(oracle_updater);
 ///
 /// let asset = AssetRequest {
@@ -134,9 +134,9 @@ pub struct AssetRequest {
 /// ```
 /// use hl_rs::actions::PerpDexSchema;
 ///
-/// let schema = PerpDexSchema::new("My DEX", "@1");  // @1 = USDC
+/// let schema = PerpDexSchema::new("My DEX", 1);  // 1 = USDC
 /// assert_eq!(schema.full_name, "My DEX");
-/// assert_eq!(schema.collateral_token, "@1");
+/// assert_eq!(schema.collateral_token, 1);
 /// assert!(schema.oracle_updater.is_none());
 /// ```
 ///
@@ -147,7 +147,7 @@ pub struct AssetRequest {
 /// use hl_rs::actions::PerpDexSchema;
 ///
 /// let oracle = Address::repeat_byte(0x42);
-/// let schema = PerpDexSchema::new("My DEX", "@1")
+/// let schema = PerpDexSchema::new("My DEX", 1)
 ///     .with_oracle_updater(oracle);
 ///
 /// assert!(schema.oracle_updater.is_some());
@@ -157,9 +157,8 @@ pub struct AssetRequest {
 pub struct PerpDexSchema {
     /// Full display name of the DEX.
     pub full_name: String,
-    /// Collateral token identifier (e.g., "@1" for USDC).
-    #[serde(serialize_with = "serialize_collateral_token")]
-    pub collateral_token: String,
+    /// Collateral token identifier (e.g., 1 for USDC).
+    pub collateral_token: u32,
     /// Optional oracle updater address. If None, the deployer is the oracle updater.
     #[serde(serialize_with = "serialize_optional_address")]
     pub oracle_updater: Option<Address>,
@@ -175,28 +174,17 @@ where
     }
 }
 
-fn serialize_collateral_token<S>(token: &str, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    if let Ok(index) = token.parse::<u32>() {
-        serializer.serialize_u32(index)
-    } else {
-        serializer.serialize_str(token)
-    }
-}
-
 impl PerpDexSchema {
     /// Create a new DEX schema.
     ///
     /// # Arguments
     ///
     /// * `full_name` - Display name for the DEX
-    /// * `collateral_token` - Collateral token identifier (e.g., "@1" for USDC)
-    pub fn new(full_name: impl Into<String>, collateral_token: impl Into<String>) -> Self {
+    /// * `collateral_token` - Collateral token identifier (e.g., 1 for USDC)
+    pub fn new(full_name: impl Into<String>, collateral_token: u32) -> Self {
         Self {
             full_name: full_name.into(),
-            collateral_token: collateral_token.into(),
+            collateral_token,
             oracle_updater: None,
         }
     }

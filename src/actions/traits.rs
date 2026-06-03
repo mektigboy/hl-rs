@@ -102,14 +102,6 @@ pub trait Action: Serialize + Send + Sync {
     /// Build the signing hash from action and metadata
     fn signing_hash(&self, meta: &SigningMeta) -> Result<B256, Error>;
 
-    /// Build the multisig signing hash (matches Python SDK multi-sig payload rules)
-    fn multisig_signing_hash(
-        &self,
-        meta: &SigningMeta,
-        payload_multi_sig_user: Address,
-        outer_signer: Address,
-    ) -> Result<B256, Error>;
-
     /// Get embedded nonce from the action (if present)
     fn nonce(&self) -> Option<u64>;
 

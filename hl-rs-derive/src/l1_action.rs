@@ -54,38 +54,6 @@ fn build_l1_action_impl(
                 ))
             }
 
-            fn multisig_signing_hash(
-                &self,
-                meta: &crate::actions::SigningMeta,
-                payload_multi_sig_user: alloy::primitives::Address,
-                outer_signer: alloy::primitives::Address,
-            ) -> Result<alloy::primitives::B256, crate::Error> {
-                let envelope = (
-                    payload_multi_sig_user.to_string().to_lowercase(),
-                    outer_signer.to_string().to_lowercase(),
-                    crate::actions::L1ActionWrapper { action: self },
-                );
-
-                let vault_for_hash =
-                    if <Self as crate::actions::L1Action>::EXCLUDE_VAULT_FROM_HASH {
-                        None
-                    } else {
-                        meta.vault_address
-                    };
-
-                let connection_id = crate::actions::compute_l1_hash(
-                    &envelope,
-                    meta.nonce,
-                    vault_for_hash,
-                    meta.expires_after,
-                )?;
-
-                Ok(crate::actions::agent_signing_hash(
-                    connection_id,
-                    &meta.signing_chain.get_source(),
-                ))
-            }
-
             fn nonce(&self) -> Option<u64> {
                 self.nonce
             }

@@ -11,6 +11,7 @@ use serde_json::Value;
 
 mod core;
 mod l1_actions;
+mod multisig;
 mod serialization;
 mod signing;
 mod traits;
@@ -18,9 +19,15 @@ mod user_signed_actions;
 
 pub use core::{PreparedAction, SignedAction, SignedActionKind};
 pub use l1_actions::*;
+pub use multisig::{MultiSigAction, MultiSigPayload, MultiSigSigningPayload, SignedMultiSigAction};
 pub use traits::{Action, L1Action, UserSignedAction};
 pub use user_signed_actions::*;
 
+pub(crate) use multisig::{
+    multisig_outer_signing_hash_with_action,
+    signature_chain_id_hex,
+};
+pub(crate) use serialization::build_action_value;
 pub(crate) use serialization::L1ActionWrapper;
 pub(crate) use signing::{agent_signing_hash, compute_l1_hash, SigningMeta};
 

@@ -22,7 +22,7 @@ async fn main() {
         only_isolated: false,
     };
 
-    let schema = PerpDexSchema::new("Big Dex Energy", "1452"); // USDH testnet
+    let schema = PerpDexSchema::new("Big Dex Energy", 1452); // USDH testnet
 
     let action = RegisterAsset::new(dex_name, asset_request).deploy_dex(schema);
 

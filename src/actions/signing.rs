@@ -81,12 +81,11 @@ pub(crate) fn compute_l1_hash<T: Serialize>(
 
 #[cfg(test)]
 mod tests {
-    use alloy::primitives::Address;
     use alloy::signers::{local::PrivateKeySigner, SignerSync};
     use rust_decimal_macros::dec;
 
     use super::SigningMeta;
-    use crate::actions::{Action, ToggleBigBlocks, UsdSend};
+    use crate::actions::{Action, UsdSend};
     use crate::SigningChain;
 
     #[test]
@@ -127,57 +126,5 @@ mod tests {
         );
         let v = if signature.v() { 28 } else { 27 };
         assert_eq!(v, 27);
-    }
-
-    #[test]
-    fn test_multisig_signing_hash_consistent_l1() {
-        let signing_chain = SigningChain::Testnet;
-        let meta = SigningMeta {
-            nonce: 123456,
-            vault_address: None,
-            expires_after: None,
-            signing_chain: &signing_chain,
-        };
-
-        let action = ToggleBigBlocks::enable();
-        let payload_multi_sig_user = Address::repeat_byte(0x11);
-        let outer_signer = Address::repeat_byte(0x22);
-
-        let hash1 = action
-            .multisig_signing_hash(&meta, payload_multi_sig_user, outer_signer)
-            .unwrap();
-        let hash2 = action
-            .multisig_signing_hash(&meta, payload_multi_sig_user, outer_signer)
-            .unwrap();
-
-        assert_eq!(hash1, hash2);
-    }
-
-    #[test]
-    fn test_multisig_signing_hash_consistent_user_signed() {
-        let signing_chain = SigningChain::Testnet;
-        let meta = SigningMeta {
-            nonce: 424242,
-            vault_address: None,
-            expires_after: None,
-            signing_chain: &signing_chain,
-        };
-
-        let action = UsdSend {
-            destination: Address::repeat_byte(0x33),
-            amount: dec!(10.5),
-            nonce: Some(424242),
-        };
-        let payload_multi_sig_user = Address::repeat_byte(0x44);
-        let outer_signer = Address::repeat_byte(0x55);
-
-        let hash1 = action
-            .multisig_signing_hash(&meta, payload_multi_sig_user, outer_signer)
-            .unwrap();
-        let hash2 = action
-            .multisig_signing_hash(&meta, payload_multi_sig_user, outer_signer)
-            .unwrap();
-
-        assert_eq!(hash1, hash2);
     }
 }

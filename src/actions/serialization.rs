@@ -242,7 +242,7 @@ impl<'de> Deserialize<'de> for SignedActionKind {
     }
 }
 
-fn serialize_sig<S>(sig: &Signature, serializer: S) -> Result<S::Ok, S::Error>
+pub(crate) fn serialize_sig<S>(sig: &Signature, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -309,7 +309,7 @@ impl<T: Action + DeserializeOwned> SignedAction<T> {
     }
 }
 
-fn build_action_value<T: Action + Serialize>(
+pub(crate) fn build_action_value<T: Action + Serialize>(
     action: &T,
     signing_chain: Option<&SigningChain>,
 ) -> Result<serde_json::Value, String> {
@@ -370,9 +370,9 @@ mod tests {
 
     use super::*;
     use crate::actions::{
-        ActionKind, BatchCancel, BatchModify, CancelByCloid, CancelWire,
-        LimitOrderType, OrderType, OrderWire, PreparedAction, SetOpenInterestCaps, SignedActionKind,
-        Tif, ToggleBigBlocks, UsdSend,
+        ActionKind, BatchCancel, BatchModify, CancelByCloid, CancelWire, LimitOrderType, OrderType,
+        OrderWire, PreparedAction, SetOpenInterestCaps, SignedActionKind, Tif, ToggleBigBlocks,
+        UsdSend,
     };
     use crate::SigningChain;
 
@@ -393,7 +393,10 @@ mod tests {
         let action = BatchModify::single(91_490_942, order);
         let v = build_action_value(&action, None).expect("build_action_value");
         let obj = v.as_object().expect("action object");
-        assert_eq!(obj.get("type").and_then(|x| x.as_str()), Some("batchModify"));
+        assert_eq!(
+            obj.get("type").and_then(|x| x.as_str()),
+            Some("batchModify")
+        );
         let modifies = obj.get("modifies").expect("top-level modifies");
         assert!(
             modifies.is_array(),
@@ -407,7 +410,10 @@ mod tests {
 
     #[test]
     fn batch_cancel_action_shape_matches_python_sdk() {
-        let action = BatchCancel::new(vec![CancelWire { a: 110_000, o: 12_345 }]);
+        let action = BatchCancel::new(vec![CancelWire {
+            a: 110_000,
+            o: 12_345,
+        }]);
         let v = build_action_value(&action, None).expect("build_action_value");
         let obj = v.as_object().expect("action object");
         assert_eq!(obj.get("type").and_then(|x| x.as_str()), Some("cancel"));
@@ -655,10 +661,10 @@ mod tests {
         let wrapper = super::L1ActionWrapper { action: &action };
         let got = rmp_serde::to_vec_named(&wrapper).unwrap();
         const EXPECTED: &[u8] = &[
-            0x84, 0xa4, 0x74, 0x79, 0x70, 0x65, 0xae, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4c, 0x65,
-            0x76, 0x65, 0x72, 0x61, 0x67, 0x65, 0xa5, 0x61, 0x73, 0x73, 0x65, 0x74, 0x0f, 0xa7, 0x69,
-            0x73, 0x43, 0x72, 0x6f, 0x73, 0x73, 0xc2, 0xa8, 0x6c, 0x65, 0x76, 0x65, 0x72, 0x61, 0x67,
-            0x65, 0x03,
+            0x84, 0xa4, 0x74, 0x79, 0x70, 0x65, 0xae, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4c,
+            0x65, 0x76, 0x65, 0x72, 0x61, 0x67, 0x65, 0xa5, 0x61, 0x73, 0x73, 0x65, 0x74, 0x0f,
+            0xa7, 0x69, 0x73, 0x43, 0x72, 0x6f, 0x73, 0x73, 0xc2, 0xa8, 0x6c, 0x65, 0x76, 0x65,
+            0x72, 0x61, 0x67, 0x65, 0x03,
         ];
         assert_eq!(got.as_slice(), EXPECTED);
     }

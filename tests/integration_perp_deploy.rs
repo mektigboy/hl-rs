@@ -6,22 +6,21 @@
 //! HL_PRIVATE_KEY=0x... cargo test --features integration-tests integration_perp_deploy
 //! ```
 
-#![cfg(feature = "integration-tests")]
 
 mod common;
 
-use alloy::primitives::Address;
+use alloy::primitives::{Address, address};
 
-use hl_rs::actions::{
+use hl_rs::{ExchangeClient, actions::{
     AssetRequest, InsertMarginTable, PerpDexSchema, RegisterAsset, SetFeeRecipient,
     SetFundingMultipliers, SetGrowthModes, SetMarginTableIds, SetOpenInterestCaps, SetOracle,
-    SetSubDeployers, SubDeployer, SubDeployerVariant, ToggleTrading,
-};
+    SetSubDeployers, SubDeployerVariant, ToggleTrading,
+}};
 use rust_decimal_macros::dec;
 
 use crate::common::{
-    log_action, log_response, send_action, signer_address, test_addresses::test_destination,
-    test_dex,
+    log_action, log_response, send_action,
+    signer_address, test_addresses::test_destination, test_dex, testnet_client,
 };
 
 // ============================================================================
@@ -31,13 +30,22 @@ use crate::common::{
 #[tokio::test]
 async fn test_register_asset_on_existing_dex() {
     // Register a new asset on an existing DEX
-    let asset = AssetRequest::new("NEWCOIN", 4, dec!(1.0), 1);
+    let asset = AssetRequest {
+        coin: "NEWCOIN".to_string(),
+        sz_decimals: 4,
+        oracle_px: dec!(1.0),
+        margin_table_id: 1,
+        only_isolated: false,
+    };
     let action = RegisterAsset::new(test_dex::PERP_DEX, asset);
 
     log_action("RegisterAsset (existing dex)", &action);
 
     assert_eq!(action.dex, test_dex::PERP_DEX);
-    assert_eq!(action.asset_request.coin, "NEWCOIN");
+    assert_eq!(
+        action.asset_request.coin,
+        format!("{}:NEWCOIN", test_dex::PERP_DEX)
+    );
     assert!(action.schema.is_none());
 
     let result = send_action(action).await;
@@ -47,10 +55,16 @@ async fn test_register_asset_on_existing_dex() {
 #[tokio::test]
 async fn test_register_asset_on_new_dex() {
     // Register a new asset on a new DEX (with schema)
-    let schema = PerpDexSchema::new("Test DEX", "@1"); // @1 = USDC collateral
+    let schema = PerpDexSchema::new("Test DEX", 1); // 1 = USDC collateral
 
-    let asset = AssetRequest::new("BTC", 4, dec!(50000), 1);
-    let action = RegisterAsset::new("testdex123", asset).new_dex(schema);
+    let asset = AssetRequest {
+        coin: "BTC".to_string(),
+        sz_decimals: 4,
+        oracle_px: dec!(50000),
+        margin_table_id: 1,
+        only_isolated: false,
+    };
+    let action = RegisterAsset::new("testdex123", asset).deploy_dex(schema);
 
     log_action("RegisterAsset (new dex)", &action);
 
@@ -58,7 +72,7 @@ async fn test_register_asset_on_new_dex() {
     assert!(action.schema.is_some());
     let schema = action.schema.as_ref().unwrap();
     assert_eq!(schema.full_name, "Test DEX");
-    assert_eq!(schema.collateral_token, "@1");
+    assert_eq!(schema.collateral_token, 1);
 
     let result = send_action(action).await;
     log_response("RegisterAsset (new dex)", &result);
@@ -68,10 +82,16 @@ async fn test_register_asset_on_new_dex() {
 async fn test_register_asset_with_oracle_updater() {
     // Register with a custom oracle updater
     let oracle_updater = signer_address();
-    let schema = PerpDexSchema::new("Oracle Test DEX", "@1").with_oracle_updater(oracle_updater);
+    let schema = PerpDexSchema::new("Oracle Test DEX", 1).with_oracle_updater(oracle_updater);
 
-    let asset = AssetRequest::new("ETH", 4, dec!(3000), 1).only_isolated(true);
-    let action = RegisterAsset::new("oracledex", asset).new_dex(schema);
+    let asset = AssetRequest {
+        coin: "ETH".to_string(),
+        sz_decimals: 4,
+        oracle_px: dec!(3000),
+        margin_table_id: 1,
+        only_isolated: true,
+    };
+    let action = RegisterAsset::new("oracledex", asset).deploy_dex(schema);
 
     log_action("RegisterAsset (with oracle updater)", &action);
 
@@ -85,7 +105,13 @@ async fn test_register_asset_with_oracle_updater() {
 #[tokio::test]
 async fn test_register_asset_with_max_gas() {
     // Register with max gas limit
-    let asset = AssetRequest::new("GASCOIN", 2, dec!(0.01), 1);
+    let asset = AssetRequest {
+        coin: "GASCOIN".to_string(),
+        sz_decimals: 2,
+        oracle_px: dec!(0.01),
+        margin_table_id: 1,
+        only_isolated: false,
+    };
     let action = RegisterAsset::new(test_dex::PERP_DEX, asset).max_gas(1_000_000);
 
     log_action("RegisterAsset (with max gas)", &action);
@@ -295,4 +321,30 @@ async fn test_set_sub_deployers_disable_permissions() {
 
     let result = send_action(action).await;
     log_response("SetSubDeployers (disable_permissions)", &result);
+}
+
+#[tokio::test]
+async fn test_set_sub_deployers_multisig_request() {
+    let multisig_user = address!("0x97878e89E37D1C565Af9213a49416585fdd17Ca5");
+    let signer = signer_address();
+    let client = testnet_client();
+
+    //let mut action = SetSubDeployers::new(test_dex::PERP_DEX)
+     //   .enable_permissions(test_destination(), vec![SubDeployerVariant::SetOracle]);
+
+        let mut action = SetFeeRecipient::new(test_dex::PERP_DEX, address!("0xFE09176D7615fd49b6b1Eeb538d0a8D2eb84d218"));
+
+    action.nonce = Some(ExchangeClient::current_timestamp_ms());
+    log_action("SetSubDeployers (multisig request)", &action);
+
+    // Include one inner signature from the outer signer as well.
+    let inner_signature = client
+        .sign_multisig_inner_action(action.clone(), multisig_user, signer)
+        .expect("outer signer should be able to sign inner multisig payload");
+
+
+    let result = client
+        .send_multisig_action(action, multisig_user, signer, vec![inner_signature])
+        .await;
+    log_response("SetSubDeployers (multisig request)", &result);
 }

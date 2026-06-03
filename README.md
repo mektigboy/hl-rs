@@ -276,7 +276,7 @@ pub struct UsdSend {
 - Field names in the type string should match struct fields (camelCase in type, snake_case in Rust)
 - `hyperliquidChain` is automatically provided by the signing context
 - `time` or `nonce` in the type string maps to the `nonce` field
-- The macro generates both regular signing and multisig signing implementations
+- The macro generates regular EIP-712 signing only; multisig now uses the dedicated wrapper flow (`send_multisig_action` with caller-provided inner signatures)
 
 #### EIP-712 Type String Format
 

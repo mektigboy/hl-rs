@@ -3,6 +3,7 @@
 // ============================================================================
 
 use alloy::{primitives::Address, signers::local::PrivateKeySigner};
+use alloy_signer::{Signature, SignerSync};
 use reqwest::Client;
 use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,7 +11,11 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    actions::{Action, SignedAction},
+    actions::{
+        agent_signing_hash, build_action_value, compute_l1_hash, multisig_outer_signing_hash_with_action,
+        signature_chain_id_hex, Action, MultiSigAction, MultiSigPayload, SignedAction,
+        SignedMultiSigAction,
+    },
     clients::exchange::responses::{ExchangeResponse, ExchangeResponseStatusRaw},
     http::HttpClient,
     BaseUrl, Error, PreparedAction,
@@ -71,6 +76,13 @@ pub struct ExchangeClient {
 }
 
 impl ExchangeClient {
+    pub fn current_timestamp_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    }
+
     pub fn new(base_url: BaseUrl) -> Self {
         let http_client = HttpClient {
             client: Client::default(),
@@ -167,10 +179,191 @@ impl ExchangeClient {
         }
     }
 
-    fn current_timestamp_ms() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
+    /// Send a wrapped Hyperliquid `multiSig` action.
+    ///
+    /// Breaking change: this now requires caller-provided `inner_signatures`
+    /// (already ordered and threshold-valid) and submits the protocol wrapper:
+    /// `{type:"multiSig", signatureChainId, signatures, payload:{multiSigUser, outerSigner, action}}`.
+    ///
+    /// The outer signature is computed over `{payload, signatureChainId, signatures}`
+    /// (without top-level `type`) using the standard nonce/expiration conventions.
+    pub async fn send_multisig_action<A: Action + Serialize>(
+        &self,
+        action: A,
+        multi_sig_user: Address,
+        outer_signer: Address,
+        inner_signatures: Vec<Signature>,
+    ) -> Result<ExchangeResponse, Error> {
+        let signed_multisig = self.build_signed_multisig_action(
+            action,
+            multi_sig_user,
+            outer_signer,
+            inner_signatures,
+        )?;
+        let output = self.http_client.post("/exchange", signed_multisig).await?;
+        let raw: ExchangeResponseStatusRaw =
+            serde_json::from_str(&output).map_err(|e| Error::JsonParse(e.to_string()))?;
+        raw.into_result()
+    }
+
+    /// Sign the inner multisig payload `(multiSigUser, outerSigner, action)` with this
+    /// client's configured signer.
+    ///
+    /// This is useful when the outer signer is also an authorized inner signer.
+    pub fn sign_multisig_inner_action<A: Action + Serialize>(
+        &self,
+        action: A,
+        multi_sig_user: Address,
+        outer_signer: Address,
+    ) -> Result<Signature, Error> {
+        let nonce = action.nonce().unwrap_or_else(Self::current_timestamp_ms);
+        let action = action.with_nonce(nonce);
+        let signing_chain = self.base_url.get_signing_chain().clone();
+        let inner_payload = (
+            multi_sig_user.to_string().to_lowercase(),
+            outer_signer.to_string().to_lowercase(),
+            crate::actions::L1ActionWrapper { action: &action },
+        );
+        let connection_id = compute_l1_hash(&inner_payload, nonce, None, self.expires_after)?;
+        let signing_hash = agent_signing_hash(connection_id, &signing_chain.get_source());
+
+        let signer = self
+            .signer_private_key
+            .as_ref()
+            .ok_or(Error::SignerNotSet)?;
+        signer
+            .sign_hash_sync(&signing_hash)
+            .map_err(|e| Error::SignatureFailure(e.to_string()))
+    }
+
+    fn build_signed_multisig_action<A: Action + Serialize>(
+        &self,
+        action: A,
+        multi_sig_user: Address,
+        outer_signer: Address,
+        inner_signatures: Vec<Signature>,
+    ) -> Result<SignedMultiSigAction, Error> {
+        let nonce = action.nonce().unwrap_or_else(Self::current_timestamp_ms);
+        let action = action.with_nonce(nonce);
+        let signing_chain = self.base_url.get_signing_chain().clone();
+        let wrapped_action_value = build_action_value(&action, Some(&signing_chain))
+            .map_err(Error::SerializationFailure)?;
+        let payload = MultiSigPayload {
+            multi_sig_user,
+            outer_signer,
+            action: wrapped_action_value,
+        };
+        let wrapped_action = MultiSigAction::new(
+            signature_chain_id_hex(&signing_chain),
+            inner_signatures,
+            payload,
+        );
+        let signing_hash = multisig_outer_signing_hash_with_action(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            wrapped_action.signature_chain_id.clone(),
+            wrapped_action.signatures.clone(),
+            &signing_chain,
+            nonce,
+            self.expires_after,
+        )?;
+
+        let signer = self
+            .signer_private_key
+            .as_ref()
+            .ok_or(Error::SignerNotSet)?;
+        let signature = signer
+            .sign_hash_sync(&signing_hash)
+            .map_err(|e| Error::SignatureFailure(e.to_string()))?;
+
+        let signed = SignedMultiSigAction {
+            action: wrapped_action,
+            nonce,
+            signature,
+            expires_after: self.expires_after,
+        };
+
+        Ok(signed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use alloy::{primitives::U256, signers::local::PrivateKeySigner};
+    use rust_decimal_macros::dec;
+
+    use super::ExchangeClient;
+    use crate::{actions::ToggleBigBlocks, BaseUrl, UsdSend};
+
+    #[test]
+    fn multisig_outer_signing_is_deterministic() {
+        let signer = PrivateKeySigner::from_str(
+            "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let outer_signer = signer.address();
+        let client = ExchangeClient::new(BaseUrl::Testnet).with_signer(signer);
+        let action = ToggleBigBlocks {
+            using_big_blocks: true,
+            nonce: Some(1_700_000_000_000),
+        };
+        let inner_signatures = vec![
+            alloy_signer::Signature::new(U256::from(1), U256::from(2), false),
+            alloy_signer::Signature::new(U256::from(3), U256::from(4), true),
+        ];
+
+        let signed_a = client
+            .build_signed_multisig_action(
+                action.clone(),
+                alloy::primitives::Address::repeat_byte(0x11),
+                outer_signer,
+                inner_signatures.clone(),
+            )
+            .unwrap();
+        let signed_b = client
+            .build_signed_multisig_action(
+                action,
+                alloy::primitives::Address::repeat_byte(0x11),
+                outer_signer,
+                inner_signatures,
+            )
+            .unwrap();
+
+        assert_eq!(signed_a.signature, signed_b.signature);
+        assert_eq!(
+            serde_json::to_value(&signed_a).unwrap(),
+            serde_json::to_value(&signed_b).unwrap()
+        );
+    }
+
+    #[test]
+    fn normal_sign_action_serialization_unchanged() {
+        let signer = PrivateKeySigner::from_str(
+            "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let client = ExchangeClient::new(BaseUrl::Testnet);
+        let action = UsdSend {
+            destination: alloy::primitives::Address::repeat_byte(0x22),
+            amount: dec!(1.5),
+            nonce: Some(1_700_000_000_000),
+        };
+
+        let signed = client.sign_action(action, &signer).unwrap();
+        let value = serde_json::to_value(signed).unwrap();
+        let action_obj = value.get("action").unwrap();
+
+        assert_eq!(
+            action_obj.get("type").and_then(|v| v.as_str()),
+            Some("usdSend")
+        );
+        assert_eq!(
+            action_obj.get("signatureChainId").and_then(|v| v.as_str()),
+            Some("0x66eee")
+        );
+        assert!(action_obj.get("time").is_some());
     }
 }
