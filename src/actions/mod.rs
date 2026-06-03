@@ -155,6 +155,7 @@ impl_action_kind![
     SetFundingInterestRates,
     SetMarginTableIds,
     InsertMarginTable,
+    MigrateDexQuoteToken,
     SetSubDeployers,
     SetGrowthModes,
     SetMarginModes,
