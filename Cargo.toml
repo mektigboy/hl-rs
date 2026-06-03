@@ -82,6 +82,9 @@ path = "examples/perp_deploy/set_margin_modes.rs"
 name = "set_perp_annotation"
 path = "examples/perp_deploy/set_perp_annotation.rs"
 [[example]]
+name = "migrate_dex_quote_token"
+path = "examples/perp_deploy/migrate_dex_quote_token.rs"
+[[example]]
 name = "register_spot"
 path = "examples/spot_deploy/register_spot.rs"
 [[example]]
