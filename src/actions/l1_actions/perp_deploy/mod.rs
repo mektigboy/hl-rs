@@ -42,6 +42,9 @@ pub use register_asset::{AssetRequest, PerpDexSchema, RegisterAsset};
 mod migrate_dex_quote_token;
 pub use migrate_dex_quote_token::MigrateDexQuoteToken;
 
+mod disable_dex;
+pub use disable_dex::DisableDex;
+
 #[macro_export]
 macro_rules! flatten_vec {
     ($struct_name:ident, $field:ident) => {

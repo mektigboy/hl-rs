@@ -156,6 +156,7 @@ impl_action_kind![
     SetMarginTableIds,
     InsertMarginTable,
     MigrateDexQuoteToken,
+    DisableDex,
     SetSubDeployers,
     SetGrowthModes,
     SetMarginModes,

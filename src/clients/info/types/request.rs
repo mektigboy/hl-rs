@@ -80,6 +80,9 @@ pub enum InfoRequest {
     UserRole {
         user: Address,
     },
+    UserToMultiSigSigners {
+        user: Address,
+    },
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

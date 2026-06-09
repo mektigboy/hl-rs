@@ -333,3 +333,10 @@ pub struct AgentRoleData {
 pub struct SubAccountRoleData {
     pub master: Address,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserToMultiSigSignersResponse {
+    pub authorized_users: Vec<Address>,
+    pub threshold: u32,
+}

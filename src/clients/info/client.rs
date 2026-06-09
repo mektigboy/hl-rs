@@ -6,7 +6,7 @@ use crate::{
     http::HttpClient,
     info::{
         client_builder::InfoClientBuilder,
-        types::{InfoRequest, UserRoleResponse},
+        types::{InfoRequest, UserRoleResponse, UserToMultiSigSignersResponse},
     },
     prelude::{Error, Result},
     types::{Meta, PerpDeployAuctionStatus, PerpDex, PerpDexStatus, SpotMeta, UserStakingSummary},
@@ -92,6 +92,19 @@ impl InfoClient {
         })
         .await
     }
+
+    /// Returns multisig signer configuration for a user, if the user is multisig-enabled.
+    ///
+    /// The API may return `null` when the user is not a multisig user, which maps to `None`.
+    pub async fn user_to_multisig_signers(
+        &self,
+        user: &Address,
+    ) -> Result<Option<UserToMultiSigSignersResponse>> {
+        self.send_request(InfoRequest::UserToMultiSigSigners {
+            user: user.to_owned(),
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -145,5 +158,17 @@ mod tests {
         let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
         let perp_deploy_auction_status = info_client.perp_deploy_auction_status().await.unwrap();
         println!("{:?}", perp_deploy_auction_status);
+    }
+
+    #[tokio::test]
+    async fn test_user_to_multisig_signers() {
+        let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
+        let user_to_multisig_signers = info_client
+            .user_to_multisig_signers(
+                &Address::from_str("0x2C8b738ED0735943CAB99BDBc5dC299813c08E91").unwrap(),
+            )
+            .await
+            .unwrap();
+        println!("{:?}", user_to_multisig_signers);
     }
 }
