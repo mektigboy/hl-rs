@@ -113,9 +113,22 @@ fn eip712_type_to_dyn_sol_type(ty: &str) -> TokenStream2 {
     }
 }
 
+fn enrich_types_preimage(full_types_preimage: &str) -> String {
+    let Some(idx) = full_types_preimage.find("hyperliquidChain,") else {
+        return full_types_preimage.to_string();
+    };
+    let insert_at = idx + "hyperliquidChain,".len();
+    format!(
+        "{}address payloadMultiSigUser,address outerSigner,{}",
+        &full_types_preimage[..insert_at],
+        &full_types_preimage[insert_at..]
+    )
+}
+
 fn build_struct_hash_tokens(
     fields: &syn::FieldsNamed,
     full_types_preimage: &str,
+    multisig_params: &[(&str, TokenStream2)],
 ) -> Result<(Vec<TokenStream2>, bool), syn::Error> {
     let (field_map, has_nonce) = build_field_map(fields)?;
 
@@ -133,6 +146,15 @@ fn build_struct_hash_tokens(
             tokens.push(quote! {
                 chain.get_hyperliquid_chain().to_abi_value(&#dyn_sol_type)?
             });
+            if !multisig_params.is_empty() {
+                for (_, expr) in multisig_params {
+                    tokens.push(expr.clone());
+                }
+            }
+            continue;
+        }
+
+        if name == "payloadMultiSigUser" || name == "outerSigner" {
             continue;
         }
 
@@ -182,7 +204,9 @@ fn build_user_signed_action_impl(
     ident: &syn::Ident,
     action_type_lit: &syn::LitStr,
     types_lit: &syn::LitStr,
+    multisig_types_lit: &syn::LitStr,
     struct_hash_tokens: &[TokenStream2],
+    multisig_struct_hash_tokens: &[TokenStream2],
     uses_time: bool,
 ) -> TokenStream2 {
     quote! {
@@ -194,6 +218,21 @@ fn build_user_signed_action_impl(
                 let type_hash = alloy::primitives::keccak256(#types_lit);
                 let values = vec![
                     #(#struct_hash_tokens,)*
+                ];
+                let tuple = alloy::dyn_abi::DynSolValue::Tuple(values);
+                Ok(alloy::primitives::keccak256(tuple.abi_encode()))
+            }
+
+            fn multisig_struct_hash(
+                &self,
+                chain: &crate::SigningChain,
+                payload_multi_sig_user: alloy::primitives::Address,
+                outer_signer: alloy::primitives::Address,
+            ) -> Result<alloy::primitives::B256, crate::Error> {
+                use crate::ToAbiValue;
+                let type_hash = alloy::primitives::keccak256(#multisig_types_lit);
+                let values = vec![
+                    #(#multisig_struct_hash_tokens,)*
                 ];
                 let tuple = alloy::dyn_abi::DynSolValue::Tuple(values);
                 Ok(alloy::primitives::keccak256(tuple.abi_encode()))
@@ -278,8 +317,31 @@ pub(crate) fn derive_user_signed_action(input: TokenStream) -> TokenStream {
     };
     let uses_time = parsed_params.iter().any(|(_, name)| name == "time");
 
+    let multisig_types_preimage = enrich_types_preimage(&full_types_preimage);
+    let multisig_types_lit = LitStr::new(&multisig_types_preimage, ident.span());
+    let multisig_param_exprs = [
+        (
+            "payloadMultiSigUser",
+            quote! {
+                payload_multi_sig_user.to_abi_value(&alloy::dyn_abi::DynSolType::Address)?
+            },
+        ),
+        (
+            "outerSigner",
+            quote! {
+                outer_signer.to_abi_value(&alloy::dyn_abi::DynSolType::Address)?
+            },
+        ),
+    ];
+
     let (struct_hash_tokens, has_nonce) =
-        match build_struct_hash_tokens(fields, &full_types_preimage) {
+        match build_struct_hash_tokens(fields, &full_types_preimage, &[]) {
+            Ok(result) => result,
+            Err(err) => return err.to_compile_error().into(),
+        };
+
+    let (multisig_struct_hash_tokens, _) =
+        match build_struct_hash_tokens(fields, &multisig_types_preimage, &multisig_param_exprs) {
             Ok(result) => result,
             Err(err) => return err.to_compile_error().into(),
         };
@@ -297,7 +359,9 @@ pub(crate) fn derive_user_signed_action(input: TokenStream) -> TokenStream {
         ident,
         &action_type_lit,
         &types_lit,
+        &multisig_types_lit,
         &struct_hash_tokens,
+        &multisig_struct_hash_tokens,
         uses_time,
     )
     .into()

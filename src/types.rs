@@ -240,6 +240,10 @@ pub struct TokenInfo {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PerpDex {
+    /// Protocol perp-dex index. The default dex is index 0 and is not returned.
+    /// Deployed dexes start at 1.
+    #[serde(skip_deserializing, default)]
+    pub id: u32,
     pub name: String,
     pub full_name: String,
     pub deployer: String,

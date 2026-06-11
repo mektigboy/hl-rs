@@ -64,12 +64,13 @@ impl InfoClient {
             return Err(Error::Api(ApiError::Other { message: error }));
         }
 
-        // Rest are DEX objects
-        let dexs: Vec<PerpDex> = response[1..]
-            .iter()
-            .map(|v| serde_json::from_value(v.clone()))
-            .collect::<std::result::Result<Vec<_>, serde_json::Error>>()
-            .map_err(|e| Error::JsonParse(e.to_string()))?;
+        let mut dexs = Vec::with_capacity(response.len().saturating_sub(1));
+        for (i, value) in response[1..].iter().enumerate() {
+            let mut dex: PerpDex = serde_json::from_value(value.clone())
+                .map_err(|e| Error::JsonParse(e.to_string()))?;
+            dex.id = (i as u32) + 1;
+            dexs.push(dex);
+        }
 
         Ok(dexs)
     }
@@ -144,6 +145,10 @@ mod tests {
         let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
         let perp_dexs = info_client.perp_dexs().await.unwrap();
         println!("{:?}", perp_dexs);
+
+        for (i, dex) in perp_dexs.iter().enumerate() {
+            assert_eq!(dex.id, (i as u32) + 1, "dex ids must be sequential starting at 1");
+        }
     }
 
     #[tokio::test]

@@ -24,10 +24,10 @@ pub use traits::{Action, L1Action, UserSignedAction};
 pub use user_signed_actions::*;
 
 pub(crate) use multisig::{
-    multisig_outer_signing_hash_with_action,
+    multisig_outer_signing_hash_with_action, multisig_outer_signing_hash_with_payload_action,
     signature_chain_id_hex,
 };
-pub(crate) use serialization::build_action_value;
+pub(crate) use serialization::{build_action_value, build_multisig_inner_action_value};
 pub(crate) use serialization::L1ActionWrapper;
 pub(crate) use signing::{agent_signing_hash, compute_l1_hash, SigningMeta};
 

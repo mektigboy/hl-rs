@@ -1,53 +1,82 @@
 use std::str::FromStr;
 
 use alloy::signers::local::PrivateKeySigner;
-use hl_rs::{BaseUrl, ExchangeClient, SetOracle};
+use hl_rs::{BaseUrl, ExchangeClient, SetOracle, TESTNET_API_URL};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetCtx {
+    oracle_px: Option<String>,
+    mark_px: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DexAsset {
+    name: String,
+    #[serde(default)]
+    is_delisted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct MetaResponse {
+    universe: Vec<DexAsset>,
+}
 
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
 
     let url = BaseUrl::Testnet;
-    let dex_name = "slob";
+    let dex_name = "blob";
 
-    // SetOracle updates oracle prices, mark prices, and external perp prices
-    // - oraclePxs: sorted list of (asset, oracle_price)
-    // - markPxs: outer list can be length 0, 1, or 2; median with local mark price is used
-    // - externalPerpPxs: sorted list of (asset, external_price) to prevent sudden mark deviations
-    //
-    // SetOracle can be called multiple times but there must be at least 2.5 seconds between calls.
-    // Stale mark prices will fall back to local mark price after 10 seconds of no updates.
-    // Deployers are expected to call setOracle every 3 seconds even with no changes.
-    let yams_px = "420.0".to_string();
+    // Build a valid request for live assets on dddd using:
+    // { "type": "metaAndAssetCtxs", "dex": "dddd" }.
+    let http = reqwest::Client::new();
+    let response: (MetaResponse, Vec<AssetCtx>) = http
+        .post(TESTNET_API_URL.to_string() + "/info")
+        .json(&serde_json::json!({
+            "type": "metaAndAssetCtxs",
+            "dex": dex_name,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
 
-    let test0_px = "10.45".to_string();
+    let (meta, asset_ctxs) = response;
+    assert_eq!(
+        meta.universe.len(),
+        asset_ctxs.len(),
+        "meta/universe length mismatch for slob",
+    );
+
+    let mut oracle_pxs = Vec::new();
+    let mut mark_prices = Vec::new();
+
+    for (asset, ctx) in meta.universe.iter().zip(asset_ctxs.iter()) {
+        //if asset.is_delisted {
+        //    continue;
+        //}
+
+        // oraclePxs should carry the external oracle value where available.
+        let oracle_px = ctx.oracle_px.clone().unwrap_or_else(|| ctx.mark_px.clone());
+        oracle_pxs.push((asset.name.clone(), oracle_px));
+        mark_prices.push((asset.name.clone(), ctx.mark_px.clone()));
+    }
+
+    assert!(!oracle_pxs.is_empty(), "No live (non-delisted) assets found for dddd");
+
     let action = SetOracle {
         dex: dex_name.to_string(),
-        oracle_pxs: vec![
-            ("slob:TEST0".to_string(), test0_px.clone()),
-            ("slob:TEST1".to_string(), "10".to_string()),
-            ("slob:TEST2".to_string(), "10".to_string()),
-            ("slob:BOOF".to_string(), "420.69".to_string()),
-            ("slob:YAMS".to_string(), yams_px.clone()),
-        ],
-        // markPxs outer list can be length 0, 1, or 2
-        // The median of these inputs along with the local mark price is used
-        mark_pxs: vec![vec![
-            ("slob:TEST0".to_string(), test0_px.clone()),
-            ("slob:TEST1".to_string(), "10".to_string()),
-            ("slob:TEST2".to_string(), "10".to_string()),
-            ("slob:BOOF".to_string(), "420.69".to_string()),
-            ("slob:YAMS".to_string(), yams_px.clone()),
-        ]],
-        // externalPerpPxs prevents sudden mark price deviations
-        // Must include all assets
-        external_perp_pxs: vec![
-            ("slob:TEST0".to_string(), test0_px.clone()),
-            ("slob:TEST1".to_string(), "10".to_string()),
-            ("slob:TEST2".to_string(), "10".to_string()),
-            ("slob:BOOF".to_string(), "420.69".to_string()),
-            ("slob:YAMS".to_string(), yams_px),
-        ],
+        oracle_pxs,
+        // Use one mark-price source list; backend combines it with local mark.
+        mark_pxs: vec![mark_prices.clone()],
+        // Keep this aligned with all listed assets.
+        external_perp_pxs: mark_prices,
         nonce: None,
     };
 

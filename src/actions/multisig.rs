@@ -9,7 +9,10 @@ use serde::{
     Serialize, Serializer,
 };
 
-use crate::{actions::serialization::serialize_sig, Error, SigningChain};
+use crate::{
+    actions::serialization::{serialize_sig, WireValue},
+    Error, SigningChain,
+};
 
 use super::{compute_l1_hash, Action, L1ActionWrapper};
 
@@ -133,6 +136,25 @@ struct MultiSigSigningPayloadForHash<'a, A: Action + Serialize> {
     payload: MultiSigPayloadForHash<'a, A>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MultiSigPayloadForHashValue {
+    #[serde(serialize_with = "crate::actions::serialization::ser_lowercase")]
+    multi_sig_user: Address,
+    #[serde(serialize_with = "crate::actions::serialization::ser_lowercase")]
+    outer_signer: Address,
+    action: WireValue,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MultiSigSigningPayloadForHashValue {
+    signature_chain_id: String,
+    #[serde(serialize_with = "serialize_signature_vec")]
+    signatures: Vec<Signature>,
+    payload: MultiSigPayloadForHashValue,
+}
+
 pub(crate) fn multisig_outer_signing_hash_with_action<A: Action + Serialize>(
     action: &A,
     multi_sig_user: Address,
@@ -150,6 +172,35 @@ pub(crate) fn multisig_outer_signing_hash_with_action<A: Action + Serialize>(
             multi_sig_user,
             outer_signer,
             action: L1ActionWrapper { action },
+        },
+    };
+    let multi_sig_action_hash = compute_l1_hash(&signing_payload, nonce, None, expires_after)?;
+
+    Ok(send_multisig_envelope_signing_hash(
+        multi_sig_action_hash,
+        signing_chain,
+        nonce,
+    ))
+}
+
+/// Outer multi-sig hash for user-signed inner actions using the wire-format payload.
+pub(crate) fn multisig_outer_signing_hash_with_payload_action(
+    payload_action: serde_json::Value,
+    multi_sig_user: Address,
+    outer_signer: Address,
+    signature_chain_id: String,
+    signatures: Vec<Signature>,
+    signing_chain: &SigningChain,
+    nonce: u64,
+    expires_after: Option<u64>,
+) -> Result<B256, Error> {
+    let signing_payload = MultiSigSigningPayloadForHashValue {
+        signature_chain_id,
+        signatures,
+        payload: MultiSigPayloadForHashValue {
+            multi_sig_user,
+            outer_signer,
+            action: WireValue(payload_action.clone()),
         },
     };
     let multi_sig_action_hash = compute_l1_hash(&signing_payload, nonce, None, expires_after)?;

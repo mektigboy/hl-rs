@@ -7,11 +7,11 @@ use hl_rs::{BaseUrl, ExchangeClient, ToggleTrading};
 async fn main() {
     dotenv::dotenv().unwrap();
 
-    let url = BaseUrl::Testnet;
-    let dex_name = "dddd";
+    let url = BaseUrl::Mainnet;
+    let dex_name = "km";
 
     // Resume (enable) trading for an asset
-    let action = ToggleTrading::resume(dex_name, "US500");
+    let action = ToggleTrading::halt(dex_name, "GLDMINE");
 
     // To halt (disable) trading instead, use:
     // let action = ToggleTrading::halt(dex_name, "TSLA");

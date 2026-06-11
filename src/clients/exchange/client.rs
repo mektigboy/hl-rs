@@ -12,9 +12,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     actions::{
-        agent_signing_hash, build_action_value, compute_l1_hash, multisig_outer_signing_hash_with_action,
+        agent_signing_hash, build_action_value, build_multisig_inner_action_value,
+        compute_l1_hash,
+        multisig_outer_signing_hash_with_action, multisig_outer_signing_hash_with_payload_action,
         signature_chain_id_hex, Action, MultiSigAction, MultiSigPayload, SignedAction,
-        SignedMultiSigAction,
+        SignedMultiSigAction, UserSignedAction,
     },
     clients::exchange::responses::{ExchangeResponse, ExchangeResponseStatusRaw},
     http::HttpClient,
@@ -206,16 +208,22 @@ impl ExchangeClient {
         raw.into_result()
     }
 
-    /// Sign the inner multisig payload `(multiSigUser, outerSigner, action)` with this
-    /// client's configured signer.
+    /// Sign the inner multisig payload for an L1 action with this client's configured signer.
     ///
-    /// This is useful when the outer signer is also an authorized inner signer.
+    /// For user-signed inner actions (e.g. `SpotTransfer`), use
+    /// [`Self::sign_multisig_inner_user_signed_action`].
     pub fn sign_multisig_inner_action<A: Action + Serialize>(
         &self,
         action: A,
         multi_sig_user: Address,
         outer_signer: Address,
     ) -> Result<Signature, Error> {
+        if A::is_user_signed() {
+            return Err(Error::GenericParse(
+                "use sign_multisig_inner_user_signed_action for user-signed actions".to_string(),
+            ));
+        }
+
         let nonce = action.nonce().unwrap_or_else(Self::current_timestamp_ms);
         let action = action.with_nonce(nonce);
         let signing_chain = self.base_url.get_signing_chain().clone();
@@ -236,6 +244,30 @@ impl ExchangeClient {
             .map_err(|e| Error::SignatureFailure(e.to_string()))
     }
 
+    /// Sign the inner multisig payload for a user-signed action (e.g. `SpotTransfer`).
+    ///
+    /// The outer signer can also be the sole authorized inner signer for 1-of-1 multisig.
+    pub fn sign_multisig_inner_user_signed_action<A: UserSignedAction + Action + Serialize>(
+        &self,
+        action: A,
+        multi_sig_user: Address,
+        outer_signer: Address,
+    ) -> Result<Signature, Error> {
+        let nonce = action.nonce().unwrap_or_else(Self::current_timestamp_ms);
+        let action = action.with_nonce(nonce);
+        let signing_chain = self.base_url.get_signing_chain().clone();
+        let signing_hash =
+            action.multisig_eip712_signing_hash(&signing_chain, multi_sig_user, outer_signer)?;
+
+        let signer = self
+            .signer_private_key
+            .as_ref()
+            .ok_or(Error::SignerNotSet)?;
+        signer
+            .sign_hash_sync(&signing_hash)
+            .map_err(|e| Error::SignatureFailure(e.to_string()))
+    }
+
     fn build_signed_multisig_action<A: Action + Serialize>(
         &self,
         action: A,
@@ -246,28 +278,45 @@ impl ExchangeClient {
         let nonce = action.nonce().unwrap_or_else(Self::current_timestamp_ms);
         let action = action.with_nonce(nonce);
         let signing_chain = self.base_url.get_signing_chain().clone();
-        let wrapped_action_value = build_action_value(&action, Some(&signing_chain))
-            .map_err(Error::SerializationFailure)?;
+        let wrapped_action_value = if A::is_user_signed() {
+            build_multisig_inner_action_value(&action, &signing_chain)
+        } else {
+            build_action_value(&action, Some(&signing_chain))
+        }
+        .map_err(Error::SerializationFailure)?;
         let payload = MultiSigPayload {
             multi_sig_user,
             outer_signer,
-            action: wrapped_action_value,
+            action: wrapped_action_value.clone(),
         };
         let wrapped_action = MultiSigAction::new(
             signature_chain_id_hex(&signing_chain),
-            inner_signatures,
-            payload,
+            inner_signatures.clone(),
+            payload.clone(),
         );
-        let signing_hash = multisig_outer_signing_hash_with_action(
-            &action,
-            multi_sig_user,
-            outer_signer,
-            wrapped_action.signature_chain_id.clone(),
-            wrapped_action.signatures.clone(),
-            &signing_chain,
-            nonce,
-            self.expires_after,
-        )?;
+        let signing_hash = if A::is_user_signed() {
+            multisig_outer_signing_hash_with_payload_action(
+                wrapped_action_value,
+                multi_sig_user,
+                outer_signer,
+                wrapped_action.signature_chain_id.clone(),
+                wrapped_action.signatures.clone(),
+                &signing_chain,
+                nonce,
+                self.expires_after,
+            )?
+        } else {
+            multisig_outer_signing_hash_with_action(
+                &action,
+                multi_sig_user,
+                outer_signer,
+                wrapped_action.signature_chain_id.clone(),
+                wrapped_action.signatures.clone(),
+                &signing_chain,
+                nonce,
+                self.expires_after,
+            )?
+        };
 
         let signer = self
             .signer_private_key

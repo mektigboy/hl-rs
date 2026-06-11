@@ -55,6 +55,40 @@ pub trait UserSignedAction: Serialize + Send + Sync + 'static {
     /// # Errors
     /// Returns an error if the struct hash computation fails.
     fn eip712_signing_hash(&self, chain: &SigningChain) -> Result<B256, Error> {
+        Ok(Self::eip712_signing_hash_from_struct_hash(
+            self.struct_hash(chain)?,
+            chain,
+        ))
+    }
+
+    /// Compute the EIP-712 struct hash for an inner multi-sig signature.
+    ///
+    /// # Errors
+    /// Returns an error if any field cannot be encoded as its expected ABI type.
+    fn multisig_struct_hash(
+        &self,
+        chain: &SigningChain,
+        payload_multi_sig_user: Address,
+        outer_signer: Address,
+    ) -> Result<B256, Error>;
+
+    /// Compute the full EIP-712 signing hash for an inner multi-sig signature.
+    ///
+    /// # Errors
+    /// Returns an error if the struct hash computation fails.
+    fn multisig_eip712_signing_hash(
+        &self,
+        chain: &SigningChain,
+        payload_multi_sig_user: Address,
+        outer_signer: Address,
+    ) -> Result<B256, Error> {
+        Ok(Self::eip712_signing_hash_from_struct_hash(
+            self.multisig_struct_hash(chain, payload_multi_sig_user, outer_signer)?,
+            chain,
+        ))
+    }
+
+    fn eip712_signing_hash_from_struct_hash(struct_hash: B256, chain: &SigningChain) -> B256 {
         let domain = eip712_domain! {
             name: "HyperliquidSignTransaction",
             version: "1",
@@ -63,7 +97,6 @@ pub trait UserSignedAction: Serialize + Send + Sync + 'static {
         };
 
         let domain_hash = domain.hash_struct();
-        let struct_hash = self.struct_hash(chain)?;
 
         let mut digest = [0u8; 66];
         digest[0] = 0x19;
@@ -71,7 +104,7 @@ pub trait UserSignedAction: Serialize + Send + Sync + 'static {
         digest[2..34].copy_from_slice(&domain_hash[..]);
         digest[34..66].copy_from_slice(&struct_hash[..]);
 
-        Ok(keccak256(digest))
+        keccak256(digest)
     }
 }
 
