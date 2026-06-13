@@ -147,12 +147,16 @@ pub enum SubDeployerVariant {
     SetOracle,
     /// Permission to set funding rate multipliers.
     SetFundingMultipliers,
+    /// Permission to set 8-hour funding interest rates.
+    SetFundingInterestRates,
     /// Permission to halt/resume trading for assets.
     HaltTrading,
     /// Permission to set margin table IDs for assets.
     SetMarginTableIds,
     /// Permission to set the fee recipient address.
     SetFeeRecipient,
+    /// Permission to set the fee scale for the DEX.
+    SetFeeScale,
     /// Permission to set open interest caps.
     SetOpenInterestCaps,
     /// Permission to insert new margin tables.
@@ -163,6 +167,8 @@ pub enum SubDeployerVariant {
     SetMarginModes,
     /// Permission to set the category and description for assets.
     SetPerpAnnotation,
+    /// Permission to disable the DEX.
+    DisableDex,
 }
 
 impl SetSubDeployers {

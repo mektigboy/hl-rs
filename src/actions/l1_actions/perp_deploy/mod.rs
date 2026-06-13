@@ -10,6 +10,9 @@ pub use set_oracle::SetOracle;
 mod set_fee_recipient;
 pub use set_fee_recipient::SetFeeRecipient;
 
+mod set_fee_scale;
+pub use set_fee_scale::SetFeeScale;
+
 mod set_funding_multipliers;
 pub use set_funding_multipliers::SetFundingMultipliers;
 

@@ -14,7 +14,10 @@ use crate::{
     Error, SigningChain,
 };
 
-use super::{compute_l1_hash, Action, L1ActionWrapper};
+use super::{
+    agent_signing_hash, build_action_value, build_multisig_inner_action_value,
+    compute_l1_hash, core::current_timestamp_ms, traits::UserSignedAction, Action, L1ActionWrapper,
+};
 
 /// Wrapper payload used by Hyperliquid `multiSig` actions.
 #[derive(Debug, Clone, Serialize)]
@@ -261,16 +264,159 @@ impl Serialize for SignedMultiSigAction {
     }
 }
 
+/// Hashes required to sign a multisig action with an external signer (e.g. KMS/enclave).
+#[derive(Debug, Clone)]
+pub struct MultisigSigningHashes {
+    pub nonce: u64,
+    pub inner_signing_hash: B256,
+}
+
+/// Compute the inner multisig signing hash for L1 actions `(multiSigUser, outerSigner, action)`.
+pub fn multisig_inner_signing_hash<A: Action + Serialize>(
+    action: A,
+    multi_sig_user: Address,
+    outer_signer: Address,
+    signing_chain: &SigningChain,
+    expires_after: Option<u64>,
+) -> Result<(A, MultisigSigningHashes), Error> {
+    if A::is_user_signed() {
+        return Err(Error::GenericParse(
+            "use multisig_inner_user_signed_signing_hash for user-signed actions".to_string(),
+        ));
+    }
+
+    let nonce = action.nonce().unwrap_or_else(current_timestamp_ms);
+    let action = action.with_nonce(nonce);
+    let inner_payload = (
+        multi_sig_user.to_string().to_lowercase(),
+        outer_signer.to_string().to_lowercase(),
+        L1ActionWrapper { action: &action },
+    );
+    let connection_id = compute_l1_hash(&inner_payload, nonce, None, expires_after)?;
+    let inner_signing_hash = agent_signing_hash(connection_id, &signing_chain.get_source());
+    Ok((
+        action,
+        MultisigSigningHashes {
+            nonce,
+            inner_signing_hash,
+        },
+    ))
+}
+
+/// Compute the inner multisig signing hash for user-signed actions (e.g. `SpotTransfer`).
+pub fn multisig_inner_user_signed_signing_hash<A: UserSignedAction + Action + Serialize>(
+    action: A,
+    multi_sig_user: Address,
+    outer_signer: Address,
+    signing_chain: &SigningChain,
+) -> Result<(A, MultisigSigningHashes), Error> {
+    let nonce = action.nonce().unwrap_or_else(current_timestamp_ms);
+    let action = action.with_nonce(nonce);
+    let inner_signing_hash =
+        action.multisig_eip712_signing_hash(signing_chain, multi_sig_user, outer_signer)?;
+    Ok((
+        action,
+        MultisigSigningHashes {
+            nonce,
+            inner_signing_hash,
+        },
+    ))
+}
+
+/// Build the wrapped `multiSig` action object with caller-provided inner signatures.
+pub fn build_multisig_action<A: Action + Serialize>(
+    action: &A,
+    multi_sig_user: Address,
+    outer_signer: Address,
+    inner_signatures: Vec<Signature>,
+    signing_chain: &SigningChain,
+) -> Result<MultiSigAction, Error> {
+    let wrapped_action_value = if A::is_user_signed() {
+        build_multisig_inner_action_value(action, signing_chain)
+    } else {
+        build_action_value(action, Some(signing_chain))
+    }
+    .map_err(Error::SerializationFailure)?;
+    Ok(MultiSigAction::new(
+        signature_chain_id_hex(signing_chain),
+        inner_signatures,
+        MultiSigPayload {
+            multi_sig_user,
+            outer_signer,
+            action: wrapped_action_value,
+        },
+    ))
+}
+
+/// Compute the outer multisig envelope signing hash.
+pub fn multisig_outer_signing_hash<A: Action + Serialize>(
+    action: &A,
+    multi_sig_user: Address,
+    outer_signer: Address,
+    wrapped_action: &MultiSigAction,
+    signing_chain: &SigningChain,
+    nonce: u64,
+    expires_after: Option<u64>,
+) -> Result<B256, Error> {
+    if A::is_user_signed() {
+        multisig_outer_signing_hash_with_payload_action(
+            wrapped_action.payload.action.clone(),
+            multi_sig_user,
+            outer_signer,
+            wrapped_action.signature_chain_id.clone(),
+            wrapped_action.signatures.clone(),
+            signing_chain,
+            nonce,
+            expires_after,
+        )
+    } else {
+        multisig_outer_signing_hash_with_action(
+            action,
+            multi_sig_user,
+            outer_signer,
+            wrapped_action.signature_chain_id.clone(),
+            wrapped_action.signatures.clone(),
+            signing_chain,
+            nonce,
+            expires_after,
+        )
+    }
+}
+
+/// Assemble a signed multisig action ready for `/exchange` submission.
+pub fn assemble_signed_multisig_action(
+    wrapped_action: MultiSigAction,
+    nonce: u64,
+    outer_signature: Signature,
+    expires_after: Option<u64>,
+) -> SignedMultiSigAction {
+    SignedMultiSigAction {
+        action: wrapped_action,
+        nonce,
+        signature: outer_signature,
+        expires_after,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use alloy::primitives::{Address, U256};
-    use alloy_signer::Signature;
+    use alloy::signers::local::PrivateKeySigner;
+    use alloy_signer::{Signature, SignerSync};
+    use rust_decimal_macros::dec;
     use serde::Serialize;
     use serde_json::json;
 
-    use super::{send_multisig_envelope_signing_hash, signature_chain_id_hex, MultiSigAction, MultiSigPayload};
+    use super::{
+        build_multisig_action, multisig_inner_signing_hash, multisig_inner_user_signed_signing_hash,
+        multisig_outer_signing_hash, send_multisig_envelope_signing_hash, signature_chain_id_hex,
+        MultiSigAction, MultiSigPayload,
+    };
     use crate::actions::compute_l1_hash;
-    use crate::SigningChain;
+    use crate::actions::traits::UserSignedAction;
+    use crate::{SpotTransfer, ToggleBigBlocks, SigningChain};
 
     fn test_signature(v: u64) -> Signature {
         Signature::new(U256::from(v), U256::from(v + 1), false)
@@ -285,7 +431,7 @@ mod tests {
         payload: MultiSigPayload,
     }
 
-    fn multisig_outer_signing_hash(
+    fn multisig_outer_signing_hash_from_payload(
         signing_payload: &super::MultiSigSigningPayload,
         signing_chain: &SigningChain,
         nonce: u64,
@@ -349,17 +495,165 @@ mod tests {
         );
         let signing_payload = action.to_signing_payload();
 
-        let hash_a = multisig_outer_signing_hash(
+        let hash_a = multisig_outer_signing_hash_from_payload(
             &signing_payload,
             &SigningChain::Testnet,
             1700000000000,
             None,
         )
         .unwrap();
-        let hash_b = multisig_outer_signing_hash(
+        let hash_b = multisig_outer_signing_hash_from_payload(
             &signing_payload,
             &SigningChain::Testnet,
             1700000000000,
+            None,
+        )
+        .unwrap();
+        assert_eq!(hash_a, hash_b);
+    }
+
+    #[test]
+    fn l1_inner_hash_is_deterministic() {
+        let signing_chain = SigningChain::Testnet;
+        let action = ToggleBigBlocks {
+            using_big_blocks: true,
+            nonce: Some(1_700_000_000_000),
+        };
+        let multi_sig_user = Address::repeat_byte(0x11);
+        let outer_signer = Address::repeat_byte(0x22);
+
+        let (_, hashes_a) =
+            multisig_inner_signing_hash(action.clone(), multi_sig_user, outer_signer, &signing_chain, None)
+                .unwrap();
+        let (_, hashes_b) =
+            multisig_inner_signing_hash(action, multi_sig_user, outer_signer, &signing_chain, None).unwrap();
+
+        assert_eq!(hashes_a.inner_signing_hash, hashes_b.inner_signing_hash);
+        assert_eq!(hashes_a.nonce, 1_700_000_000_000);
+    }
+
+    #[test]
+    fn l1_inner_hash_rejects_user_signed_actions() {
+        let action = SpotTransfer::new(Address::repeat_byte(0xaa), "HYPE", dec!(1.0));
+        let err = multisig_inner_signing_hash(
+            action,
+            Address::repeat_byte(0x11),
+            Address::repeat_byte(0x22),
+            &SigningChain::Testnet,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("multisig_inner_user_signed_signing_hash"));
+    }
+
+    #[test]
+    fn l1_outer_hash_matches_public_helper() {
+        let signing_chain = SigningChain::Testnet;
+        let action = ToggleBigBlocks {
+            using_big_blocks: true,
+            nonce: Some(1_700_000_000_000),
+        };
+        let multi_sig_user = Address::repeat_byte(0x11);
+        let outer_signer = Address::repeat_byte(0x22);
+        let inner_signatures = vec![
+            Signature::new(U256::from(1), U256::from(2), false),
+            Signature::new(U256::from(3), U256::from(4), true),
+        ];
+
+        let wrapped = build_multisig_action(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            inner_signatures.clone(),
+            &signing_chain,
+        )
+        .unwrap();
+
+        let hash_a = multisig_outer_signing_hash(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            &wrapped,
+            &signing_chain,
+            1_700_000_000_000,
+            None,
+        )
+        .unwrap();
+        let hash_b = multisig_outer_signing_hash(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            &wrapped,
+            &signing_chain,
+            1_700_000_000_000,
+            None,
+        )
+        .unwrap();
+        assert_eq!(hash_a, hash_b);
+    }
+
+    #[test]
+    fn user_signed_inner_hash_matches_local_signer() {
+        let signing_chain = SigningChain::Testnet;
+        let signer = PrivateKeySigner::from_str(
+            "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let multi_sig_user = Address::repeat_byte(0x11);
+        let outer_signer = signer.address();
+        let action = SpotTransfer::new(Address::repeat_byte(0xaa), "HYPE", dec!(0.01));
+        let (action, hashes) = multisig_inner_user_signed_signing_hash(
+            action,
+            multi_sig_user,
+            outer_signer,
+            &signing_chain,
+        )
+        .unwrap();
+
+        let sig_from_hash = signer.sign_hash_sync(&hashes.inner_signing_hash).unwrap();
+        let sig_direct = action
+            .multisig_eip712_signing_hash(&signing_chain, multi_sig_user, outer_signer)
+            .unwrap();
+        let sig_from_direct = signer.sign_hash_sync(&sig_direct).unwrap();
+        assert_eq!(sig_from_hash, sig_from_direct);
+    }
+
+    #[test]
+    fn user_signed_outer_hash_is_deterministic() {
+        let signing_chain = SigningChain::Testnet;
+        let multi_sig_user = Address::repeat_byte(0x11);
+        let outer_signer = Address::repeat_byte(0x22);
+        let nonce = 1_700_000_000_000;
+        let mut action = SpotTransfer::new(Address::repeat_byte(0xaa), "HYPE", dec!(0.01));
+        action.nonce = Some(nonce);
+        let inner_signatures = vec![Signature::new(U256::from(7), U256::from(9), false)];
+
+        let wrapped = build_multisig_action(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            inner_signatures,
+            &signing_chain,
+        )
+        .unwrap();
+
+        let hash_a = multisig_outer_signing_hash(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            &wrapped,
+            &signing_chain,
+            nonce,
+            None,
+        )
+        .unwrap();
+        let hash_b = multisig_outer_signing_hash(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            &wrapped,
+            &signing_chain,
+            nonce,
             None,
         )
         .unwrap();

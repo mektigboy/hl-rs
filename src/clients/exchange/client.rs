@@ -12,11 +12,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     actions::{
-        agent_signing_hash, build_action_value, build_multisig_inner_action_value,
-        compute_l1_hash,
-        multisig_outer_signing_hash_with_action, multisig_outer_signing_hash_with_payload_action,
-        signature_chain_id_hex, Action, MultiSigAction, MultiSigPayload, SignedAction,
-        SignedMultiSigAction, UserSignedAction,
+        agent_signing_hash, assemble_signed_multisig_action, build_multisig_action,
+        compute_l1_hash, multisig_outer_signing_hash, Action, SignedAction, SignedMultiSigAction,
+        UserSignedAction,
     },
     clients::exchange::responses::{ExchangeResponse, ExchangeResponseStatusRaw},
     http::HttpClient,
@@ -202,7 +200,15 @@ impl ExchangeClient {
             outer_signer,
             inner_signatures,
         )?;
-        let output = self.http_client.post("/exchange", signed_multisig).await?;
+        self.send_signed_multisig_action(signed_multisig).await
+    }
+
+    /// Submit a pre-built signed multisig action to `/exchange`.
+    pub async fn send_signed_multisig_action(
+        &self,
+        signed_action: SignedMultiSigAction,
+    ) -> Result<ExchangeResponse, Error> {
+        let output = self.http_client.post("/exchange", signed_action).await?;
         let raw: ExchangeResponseStatusRaw =
             serde_json::from_str(&output).map_err(|e| Error::JsonParse(e.to_string()))?;
         raw.into_result()
@@ -278,45 +284,22 @@ impl ExchangeClient {
         let nonce = action.nonce().unwrap_or_else(Self::current_timestamp_ms);
         let action = action.with_nonce(nonce);
         let signing_chain = self.base_url.get_signing_chain().clone();
-        let wrapped_action_value = if A::is_user_signed() {
-            build_multisig_inner_action_value(&action, &signing_chain)
-        } else {
-            build_action_value(&action, Some(&signing_chain))
-        }
-        .map_err(Error::SerializationFailure)?;
-        let payload = MultiSigPayload {
+        let wrapped_action = build_multisig_action(
+            &action,
             multi_sig_user,
             outer_signer,
-            action: wrapped_action_value.clone(),
-        };
-        let wrapped_action = MultiSigAction::new(
-            signature_chain_id_hex(&signing_chain),
-            inner_signatures.clone(),
-            payload.clone(),
-        );
-        let signing_hash = if A::is_user_signed() {
-            multisig_outer_signing_hash_with_payload_action(
-                wrapped_action_value,
-                multi_sig_user,
-                outer_signer,
-                wrapped_action.signature_chain_id.clone(),
-                wrapped_action.signatures.clone(),
-                &signing_chain,
-                nonce,
-                self.expires_after,
-            )?
-        } else {
-            multisig_outer_signing_hash_with_action(
-                &action,
-                multi_sig_user,
-                outer_signer,
-                wrapped_action.signature_chain_id.clone(),
-                wrapped_action.signatures.clone(),
-                &signing_chain,
-                nonce,
-                self.expires_after,
-            )?
-        };
+            inner_signatures,
+            &signing_chain,
+        )?;
+        let signing_hash = multisig_outer_signing_hash(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            &wrapped_action,
+            &signing_chain,
+            nonce,
+            self.expires_after,
+        )?;
 
         let signer = self
             .signer_private_key
@@ -326,14 +309,12 @@ impl ExchangeClient {
             .sign_hash_sync(&signing_hash)
             .map_err(|e| Error::SignatureFailure(e.to_string()))?;
 
-        let signed = SignedMultiSigAction {
-            action: wrapped_action,
+        Ok(assemble_signed_multisig_action(
+            wrapped_action,
             nonce,
             signature,
-            expires_after: self.expires_after,
-        };
-
-        Ok(signed)
+            self.expires_after,
+        ))
     }
 }
 
@@ -344,8 +325,17 @@ mod tests {
     use alloy::{primitives::U256, signers::local::PrivateKeySigner};
     use rust_decimal_macros::dec;
 
+    use alloy::primitives::Address;
+    use alloy_signer::SignerSync;
+
     use super::ExchangeClient;
-    use crate::{actions::ToggleBigBlocks, BaseUrl, UsdSend};
+    use crate::{
+        actions::{
+            build_multisig_action, multisig_inner_signing_hash,
+            multisig_inner_user_signed_signing_hash, multisig_outer_signing_hash,
+        },
+        BaseUrl, SpotTransfer, ToggleBigBlocks, UsdSend,
+    };
 
     #[test]
     fn multisig_outer_signing_is_deterministic() {
@@ -414,5 +404,100 @@ mod tests {
             Some("0x66eee")
         );
         assert!(action_obj.get("time").is_some());
+    }
+
+    #[test]
+    fn external_l1_inner_hash_matches_local_signer() {
+        let signer = PrivateKeySigner::from_str(
+            "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let client = ExchangeClient::new(BaseUrl::Testnet).with_signer(signer.clone());
+        let multi_sig_user = Address::repeat_byte(0x11);
+        let outer_signer = signer.address();
+        let action = ToggleBigBlocks {
+            using_big_blocks: true,
+            nonce: Some(1_700_000_000_000),
+        };
+
+        let (action, hashes) = multisig_inner_signing_hash(
+            action.clone(),
+            multi_sig_user,
+            outer_signer,
+            &BaseUrl::Testnet.get_signing_chain(),
+            None,
+        )
+        .unwrap();
+        let sig_from_hash = signer.sign_hash_sync(&hashes.inner_signing_hash).unwrap();
+        let sig_from_client = client
+            .sign_multisig_inner_action(action, multi_sig_user, outer_signer)
+            .unwrap();
+        assert_eq!(sig_from_hash, sig_from_client);
+    }
+
+    #[test]
+    fn external_user_signed_inner_hash_matches_local_signer() {
+        let signer = PrivateKeySigner::from_str(
+            "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let client = ExchangeClient::new(BaseUrl::Testnet).with_signer(signer.clone());
+        let multi_sig_user = Address::repeat_byte(0x11);
+        let outer_signer = signer.address();
+        let action = SpotTransfer::new(Address::repeat_byte(0xaa), "HYPE", dec!(0.01));
+
+        let (action, hashes) = multisig_inner_user_signed_signing_hash(
+            action.clone(),
+            multi_sig_user,
+            outer_signer,
+            &BaseUrl::Testnet.get_signing_chain(),
+        )
+        .unwrap();
+        let sig_from_hash = signer.sign_hash_sync(&hashes.inner_signing_hash).unwrap();
+        let sig_from_client = client
+            .sign_multisig_inner_user_signed_action(action, multi_sig_user, outer_signer)
+            .unwrap();
+        assert_eq!(sig_from_hash, sig_from_client);
+    }
+
+    #[test]
+    fn external_user_signed_outer_hash_matches_local_signer() {
+        let signer = PrivateKeySigner::from_str(
+            "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let client = ExchangeClient::new(BaseUrl::Testnet).with_signer(signer.clone());
+        let multi_sig_user = Address::repeat_byte(0x11);
+        let outer_signer = signer.address();
+        let signing_chain = BaseUrl::Testnet.get_signing_chain();
+        let nonce = 1_700_000_000_000;
+        let mut action = SpotTransfer::new(Address::repeat_byte(0xaa), "HYPE", dec!(0.01));
+        action.nonce = Some(nonce);
+        let inner_signatures = vec![alloy_signer::Signature::new(U256::from(7), U256::from(9), false)];
+
+        let wrapped = build_multisig_action(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            inner_signatures.clone(),
+            &signing_chain,
+        )
+        .unwrap();
+        let outer_hash = multisig_outer_signing_hash(
+            &action,
+            multi_sig_user,
+            outer_signer,
+            &wrapped,
+            &signing_chain,
+            nonce,
+            None,
+        )
+        .unwrap();
+        let sig_from_hash = signer.sign_hash_sync(&outer_hash).unwrap();
+        let sig_from_client = client
+            .build_signed_multisig_action(action, multi_sig_user, outer_signer, inner_signatures)
+            .unwrap()
+            .signature;
+        assert_eq!(sig_from_hash, sig_from_client);
     }
 }
