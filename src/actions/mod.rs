@@ -129,6 +129,7 @@ impl_action_kind![
     // L1 actions (flatten types)
     ToggleBigBlocks,
     NoOp,
+    ClaimRewards,
     SetReferrer,
     CreateSubAccount,
     SubAccountTransfer,

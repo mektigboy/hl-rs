@@ -13,6 +13,9 @@ pub use toggle_big_blocks::ToggleBigBlocks;
 mod no_op;
 pub use no_op::NoOp;
 
+mod claim_rewards;
+pub use claim_rewards::ClaimRewards;
+
 mod set_referrer;
 pub use set_referrer::SetReferrer;
 
