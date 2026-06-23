@@ -457,6 +457,22 @@ fn user_signed_wire_field_order(action_type: &str) -> &'static [&'static str] {
             "signatureChainId",
             "hyperliquidChain",
         ],
+        "userSetAbstraction" => &[
+            "user",
+            "abstraction",
+            "nonce",
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        "userDexAbstraction" => &[
+            "user",
+            "enabled",
+            "nonce",
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
         _ => &[],
     }
 }

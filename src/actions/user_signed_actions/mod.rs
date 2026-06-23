@@ -16,6 +16,9 @@ pub use send_asset::{DexId, SendAsset};
 mod user_dex_abstraction;
 pub use user_dex_abstraction::UserDexAbstraction;
 
+mod user_set_abstraction;
+pub use user_set_abstraction::{AbstractionMode, UserSetAbstraction};
+
 mod token_delegate;
 pub use token_delegate::TokenDelegate;
 

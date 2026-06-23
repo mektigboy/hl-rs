@@ -122,6 +122,7 @@ impl_action_kind![
     UsdClassTransfer,
     SendAsset,
     UserDexAbstraction,
+    UserSetAbstraction,
     TokenDelegate,
     ConvertToMultiSigUser,
     ApproveAgent,

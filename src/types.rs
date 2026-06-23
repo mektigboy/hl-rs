@@ -51,7 +51,7 @@ impl SigningChain {
     pub(crate) fn get_signature_chain_id(&self) -> u64 {
         match self {
             SigningChain::Testnet => 421614,
-            SigningChain::Mainnet => 42161,
+            SigningChain::Mainnet => 421614,
             #[cfg(feature = "custom-signing-chain")]
             SigningChain::Custom {
                 signature_chain_id, ..

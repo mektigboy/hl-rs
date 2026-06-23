@@ -166,6 +166,7 @@ pub(crate) fn multisig_outer_signing_hash_with_action<A: Action + Serialize>(
     signatures: Vec<Signature>,
     signing_chain: &SigningChain,
     nonce: u64,
+    vault_address: Option<Address>,
     expires_after: Option<u64>,
 ) -> Result<B256, Error> {
     let signing_payload = MultiSigSigningPayloadForHash {
@@ -177,7 +178,7 @@ pub(crate) fn multisig_outer_signing_hash_with_action<A: Action + Serialize>(
             action: L1ActionWrapper { action },
         },
     };
-    let multi_sig_action_hash = compute_l1_hash(&signing_payload, nonce, None, expires_after)?;
+    let multi_sig_action_hash = compute_l1_hash(&signing_payload, nonce, vault_address, expires_after)?;
 
     Ok(send_multisig_envelope_signing_hash(
         multi_sig_action_hash,
@@ -195,6 +196,7 @@ pub(crate) fn multisig_outer_signing_hash_with_payload_action(
     signatures: Vec<Signature>,
     signing_chain: &SigningChain,
     nonce: u64,
+    vault_address: Option<Address>,
     expires_after: Option<u64>,
 ) -> Result<B256, Error> {
     let signing_payload = MultiSigSigningPayloadForHashValue {
@@ -206,7 +208,7 @@ pub(crate) fn multisig_outer_signing_hash_with_payload_action(
             action: WireValue(payload_action.clone()),
         },
     };
-    let multi_sig_action_hash = compute_l1_hash(&signing_payload, nonce, None, expires_after)?;
+    let multi_sig_action_hash = compute_l1_hash(&signing_payload, nonce, vault_address, expires_after)?;
 
     Ok(send_multisig_envelope_signing_hash(
         multi_sig_action_hash,
@@ -245,6 +247,10 @@ pub struct SignedMultiSigAction {
     pub action: MultiSigAction,
     pub nonce: u64,
     pub signature: Signature,
+    /// Vault/subaccount the wrapped action executes on (e.g. a multisig master
+    /// placing an order on its subaccount). Folded into both inner and outer
+    /// action hashes and emitted as `vaultAddress` in the request body.
+    pub vault_address: Option<Address>,
     pub expires_after: Option<u64>,
 }
 
@@ -253,10 +259,13 @@ impl Serialize for SignedMultiSigAction {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("SignedMultiSigAction", 4)?;
+        let mut state = serializer.serialize_struct("SignedMultiSigAction", 5)?;
         state.serialize_field("action", &self.action)?;
         state.serialize_field("nonce", &self.nonce)?;
         state.serialize_field("signature", &SignatureWire(&self.signature))?;
+        if let Some(vault_address) = &self.vault_address {
+            state.serialize_field("vaultAddress", vault_address)?;
+        }
         if let Some(expires_after) = self.expires_after {
             state.serialize_field("expiresAfter", &expires_after)?;
         }
@@ -277,6 +286,7 @@ pub fn multisig_inner_signing_hash<A: Action + Serialize>(
     multi_sig_user: Address,
     outer_signer: Address,
     signing_chain: &SigningChain,
+    vault_address: Option<Address>,
     expires_after: Option<u64>,
 ) -> Result<(A, MultisigSigningHashes), Error> {
     if A::is_user_signed() {
@@ -292,7 +302,7 @@ pub fn multisig_inner_signing_hash<A: Action + Serialize>(
         outer_signer.to_string().to_lowercase(),
         L1ActionWrapper { action: &action },
     );
-    let connection_id = compute_l1_hash(&inner_payload, nonce, None, expires_after)?;
+    let connection_id = compute_l1_hash(&inner_payload, nonce, vault_address, expires_after)?;
     let inner_signing_hash = agent_signing_hash(connection_id, &signing_chain.get_source());
     Ok((
         action,
@@ -356,6 +366,7 @@ pub fn multisig_outer_signing_hash<A: Action + Serialize>(
     wrapped_action: &MultiSigAction,
     signing_chain: &SigningChain,
     nonce: u64,
+    vault_address: Option<Address>,
     expires_after: Option<u64>,
 ) -> Result<B256, Error> {
     if A::is_user_signed() {
@@ -367,6 +378,7 @@ pub fn multisig_outer_signing_hash<A: Action + Serialize>(
             wrapped_action.signatures.clone(),
             signing_chain,
             nonce,
+            vault_address,
             expires_after,
         )
     } else {
@@ -378,6 +390,7 @@ pub fn multisig_outer_signing_hash<A: Action + Serialize>(
             wrapped_action.signatures.clone(),
             signing_chain,
             nonce,
+            vault_address,
             expires_after,
         )
     }
@@ -388,12 +401,14 @@ pub fn assemble_signed_multisig_action(
     wrapped_action: MultiSigAction,
     nonce: u64,
     outer_signature: Signature,
+    vault_address: Option<Address>,
     expires_after: Option<u64>,
 ) -> SignedMultiSigAction {
     SignedMultiSigAction {
         action: wrapped_action,
         nonce,
         signature: outer_signature,
+        vault_address,
         expires_after,
     }
 }
@@ -523,10 +538,10 @@ mod tests {
         let outer_signer = Address::repeat_byte(0x22);
 
         let (_, hashes_a) =
-            multisig_inner_signing_hash(action.clone(), multi_sig_user, outer_signer, &signing_chain, None)
+            multisig_inner_signing_hash(action.clone(), multi_sig_user, outer_signer, &signing_chain, None, None)
                 .unwrap();
         let (_, hashes_b) =
-            multisig_inner_signing_hash(action, multi_sig_user, outer_signer, &signing_chain, None).unwrap();
+            multisig_inner_signing_hash(action, multi_sig_user, outer_signer, &signing_chain, None, None).unwrap();
 
         assert_eq!(hashes_a.inner_signing_hash, hashes_b.inner_signing_hash);
         assert_eq!(hashes_a.nonce, 1_700_000_000_000);
@@ -540,6 +555,7 @@ mod tests {
             Address::repeat_byte(0x11),
             Address::repeat_byte(0x22),
             &SigningChain::Testnet,
+            None,
             None,
         )
         .unwrap_err();
@@ -577,6 +593,7 @@ mod tests {
             &signing_chain,
             1_700_000_000_000,
             None,
+            None,
         )
         .unwrap();
         let hash_b = multisig_outer_signing_hash(
@@ -586,6 +603,7 @@ mod tests {
             &wrapped,
             &signing_chain,
             1_700_000_000_000,
+            None,
             None,
         )
         .unwrap();
@@ -645,6 +663,7 @@ mod tests {
             &signing_chain,
             nonce,
             None,
+            None,
         )
         .unwrap();
         let hash_b = multisig_outer_signing_hash(
@@ -654,6 +673,7 @@ mod tests {
             &wrapped,
             &signing_chain,
             nonce,
+            None,
             None,
         )
         .unwrap();

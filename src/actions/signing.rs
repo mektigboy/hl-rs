@@ -127,4 +127,32 @@ mod tests {
         let v = if signature.v() { 28 } else { 27 };
         assert_eq!(v, 27);
     }
+
+    #[test]
+    fn test_user_set_abstraction_signing_hardcoded() {
+        use alloy::signers::{local::PrivateKeySigner, SignerSync};
+
+        use crate::actions::{AbstractionMode, UserSetAbstraction};
+
+        let wallet: PrivateKeySigner =
+            "e908f86dbb4d55ac876378565aafeabc187f6690f046459397b17d9b9a19688e"
+                .parse()
+                .unwrap();
+        let signing_chain = SigningChain::Mainnet;
+        let prepared = crate::actions::PreparedAction::new(
+            UserSetAbstraction {
+                user: wallet.address(),
+                abstraction: AbstractionMode::Disabled,
+                nonce: Some(1700000000000),
+            },
+            &signing_chain,
+            None,
+            None,
+        )
+        .unwrap();
+        let signed = prepared.sign(&wallet).unwrap();
+
+        let expected_sig = "0x5e9d2fcbc9f4cecf997dd7ad72dabf096c2c772aacdedfe4fe558948bc504989026be4dfd8bab24982eca3cac8fb5a1cc2f5bbcf95af94f59da079653a86c7141c";
+        assert_eq!(signed.signature.to_string(), expected_sig);
+    }
 }
