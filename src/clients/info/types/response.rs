@@ -340,3 +340,17 @@ pub struct UserToMultiSigSignersResponse {
     pub authorized_users: Vec<Address>,
     pub threshold: u32,
 }
+
+/// User API rate limit state from the `userRateLimit` info request.
+///
+/// See [Query user rate limits](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-user-rate-limits).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserRateLimit {
+    pub cum_vlm: String,
+    /// `max(0, cumulative_used - reserved)`
+    pub n_requests_used: u64,
+    pub n_requests_cap: u64,
+    /// `max(0, reserved - cumulative_used)`
+    pub n_requests_surplus: u64,
+}

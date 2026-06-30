@@ -6,7 +6,7 @@ use crate::{
     http::HttpClient,
     info::{
         client_builder::InfoClientBuilder,
-        types::{InfoRequest, UserRoleResponse, UserToMultiSigSignersResponse},
+        types::{InfoRequest, UserRateLimit, UserRoleResponse, UserToMultiSigSignersResponse},
     },
     prelude::{Error, Result},
     types::{Meta, PerpDeployAuctionStatus, PerpDex, PerpDexStatus, SpotMeta, UserStakingSummary},
@@ -106,6 +106,16 @@ impl InfoClient {
         })
         .await
     }
+
+    /// Query a user's API rate limit state.
+    ///
+    /// See [Query user rate limits](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-user-rate-limits).
+    pub async fn user_rate_limit(&self, user: &Address) -> Result<UserRateLimit> {
+        self.send_request(InfoRequest::UserRateLimit {
+            user: user.to_owned(),
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -175,5 +185,17 @@ mod tests {
             .await
             .unwrap();
         println!("{:?}", user_to_multisig_signers);
+    }
+
+    #[tokio::test]
+    async fn test_user_rate_limit() {
+        let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
+        let rate_limit = info_client
+            .user_rate_limit(
+                &Address::from_str("0x1234567890123456789012345678901234567890").unwrap(),
+            )
+            .await
+            .unwrap();
+        println!("{:?}", rate_limit);
     }
 }

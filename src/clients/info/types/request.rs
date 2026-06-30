@@ -83,6 +83,10 @@ pub enum InfoRequest {
     UserToMultiSigSigners {
         user: Address,
     },
+    #[serde(rename = "userRateLimit")]
+    UserRateLimit {
+        user: Address,
+    },
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
