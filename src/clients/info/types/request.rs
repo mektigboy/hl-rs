@@ -33,7 +33,7 @@ pub enum InfoRequest {
         oid: u64,
     },
     Meta,
-    MetaAndAssetCtxs,
+    MetaAndAssetCtxs { dex: Option<String> },
     SpotMeta,
     SpotMetaAndAssetCtxs,
     AllMids,
