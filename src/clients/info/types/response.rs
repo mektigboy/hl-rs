@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use alloy::primitives::Address;
+
+use crate::types::{AssetContext, Meta};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -339,6 +341,27 @@ pub struct SubAccountRoleData {
 pub struct UserToMultiSigSignersResponse {
     pub authorized_users: Vec<Address>,
     pub threshold: u32,
+}
+
+/// Perpetual metadata and asset contexts from the `metaAndAssetCtxs` info request.
+///
+/// The API returns a two-element JSON array: `[meta, assetCtxs]`.
+///
+/// See [Retrieve perpetuals metadata (universe and margin tables)](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables).
+#[derive(Debug, Clone)]
+pub struct MetaAndAssetCtxsResponse {
+    pub meta: Meta,
+    pub asset_ctxs: Vec<AssetContext>,
+}
+
+impl<'de> Deserialize<'de> for MetaAndAssetCtxsResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (meta, asset_ctxs) = <(Meta, Vec<AssetContext>)>::deserialize(deserializer)?;
+        Ok(Self { meta, asset_ctxs })
+    }
 }
 
 /// User API rate limit state from the `userRateLimit` info request.

@@ -33,7 +33,10 @@ pub enum InfoRequest {
         oid: u64,
     },
     Meta,
-    MetaAndAssetCtxs { dex: Option<String> },
+    MetaAndAssetCtxs {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        dex: Option<String>,
+    },
     SpotMeta,
     SpotMetaAndAssetCtxs,
     AllMids,

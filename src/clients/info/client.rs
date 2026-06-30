@@ -6,7 +6,10 @@ use crate::{
     http::HttpClient,
     info::{
         client_builder::InfoClientBuilder,
-        types::{InfoRequest, UserRateLimit, UserRoleResponse, UserToMultiSigSignersResponse},
+        types::{
+            InfoRequest, MetaAndAssetCtxsResponse, UserRateLimit, UserRoleResponse,
+            UserStateResponse, UserToMultiSigSignersResponse,
+        },
     },
     prelude::{Error, Result},
     types::{Meta, PerpDeployAuctionStatus, PerpDex, PerpDexStatus, SpotMeta, UserStakingSummary},
@@ -33,6 +36,21 @@ impl InfoClient {
 
     pub async fn meta(&self) -> Result<Meta> {
         self.send_request(InfoRequest::Meta).await
+    }
+
+    /// Retrieve perpetual metadata and asset contexts.
+    ///
+    /// Pass `dex` to query a HIP-3 dex; omit it for the default clearinghouse.
+    ///
+    /// See [Retrieve perpetuals metadata (universe and margin tables)](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables).
+    pub async fn meta_and_asset_ctxs(
+        &self,
+        dex: Option<&str>,
+    ) -> Result<MetaAndAssetCtxsResponse> {
+        self.send_request(InfoRequest::MetaAndAssetCtxs {
+            dex: dex.map(str::to_string),
+        })
+        .await
     }
 
     pub async fn spot_meta(&self) -> Result<SpotMeta> {
@@ -116,6 +134,16 @@ impl InfoClient {
         })
         .await
     }
+
+    /// Query a user's perp clearinghouse state, including `withdrawable` USDC and margin summaries.
+    ///
+    /// See [`clearinghouseState`](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-users-perpetuals-account-summary).
+    pub async fn user_state(&self, user: &Address) -> Result<UserStateResponse> {
+        self.send_request(InfoRequest::UserState {
+            user: user.to_owned(),
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -185,6 +213,19 @@ mod tests {
             .await
             .unwrap();
         println!("{:?}", user_to_multisig_signers);
+    }
+
+    #[tokio::test]
+    async fn test_meta_and_asset_ctxs() {
+        let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
+        let response = info_client.meta_and_asset_ctxs(None).await.unwrap();
+        assert_eq!(
+            response.meta.universe.len(),
+            response.asset_ctxs.len(),
+            "meta universe and asset ctx lengths must match",
+        );
+        println!("{:?}", response.meta.universe.first());
+        println!("{:?}", response.asset_ctxs.first());
     }
 
     #[tokio::test]

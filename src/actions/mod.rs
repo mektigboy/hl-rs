@@ -129,6 +129,7 @@ impl_action_kind![
     ApproveBuilderFee,
     // L1 actions (flatten types)
     ToggleBigBlocks,
+    ReserveRequestWeight,
     NoOp,
     ClaimRewards,
     SetReferrer,
