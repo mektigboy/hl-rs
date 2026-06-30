@@ -23,7 +23,7 @@ impl InfoClient {
         InfoClientBuilder::new(base_url)
     }
 
-    async fn send_request<T: for<'a> Deserialize<'a>>(
+    pub async fn send_request<T: for<'a> Deserialize<'a>>(
         &self,
         info_request: InfoRequest,
     ) -> Result<T> {
