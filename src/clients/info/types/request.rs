@@ -100,3 +100,15 @@ pub struct CandleSnapshotRequest {
     start_time: u64,
     end_time: u64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn meta_and_asset_ctxs_request_omits_null_dex() {
+        let req = InfoRequest::MetaAndAssetCtxs { dex: None };
+        let json = serde_json::to_string(&req).unwrap();
+        assert_eq!(json, r#"{"type":"metaAndAssetCtxs"}"#);
+    }
+}

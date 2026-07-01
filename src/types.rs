@@ -129,6 +129,7 @@ impl CoinToAsset {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Meta {
     pub universe: Vec<AssetMeta>,
+    pub collateral_token: Option<u32>
 }
 
 #[derive(Deserialize, Debug, Clone)]
