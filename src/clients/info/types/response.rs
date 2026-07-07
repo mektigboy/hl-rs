@@ -343,6 +343,20 @@ pub struct UserToMultiSigSignersResponse {
     pub threshold: u32,
 }
 
+/// Account abstraction mode from the `userAbstraction` info request.
+///
+/// See [Query a user's abstraction state](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-a-users-abstraction-state).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum UserAbstractionResponse {
+    #[serde(rename = "default")]
+    Default,
+    UnifiedAccount,
+    PortfolioMargin,
+    Disabled,
+    DexAbstraction,
+}
+
 /// Perpetual metadata and asset contexts from the `metaAndAssetCtxs` info request.
 ///
 /// The API returns a two-element JSON array: `[meta, assetCtxs]`.

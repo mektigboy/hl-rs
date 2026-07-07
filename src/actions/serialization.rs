@@ -254,7 +254,7 @@ where
     state.end()
 }
 
-fn deserialize_sig<'de, D>(deserializer: D) -> Result<Signature, D::Error>
+pub(crate) fn deserialize_sig<'de, D>(deserializer: D) -> Result<Signature, D::Error>
 where
     D: Deserializer<'de>,
 {

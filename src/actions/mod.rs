@@ -12,6 +12,7 @@ use serde_json::Value;
 mod core;
 mod l1_actions;
 mod multisig;
+mod multisig_validation;
 mod serialization;
 mod signing;
 mod traits;
@@ -23,6 +24,10 @@ pub use multisig::{
     assemble_signed_multisig_action, build_multisig_action, multisig_inner_signing_hash,
     multisig_inner_user_signed_signing_hash, multisig_outer_signing_hash, MultiSigAction,
     MultiSigPayload, MultisigSigningHashes, MultiSigSigningPayload, SignedMultiSigAction,
+};
+pub use multisig_validation::{
+    validate_multisig_l1_action, validate_multisig_user_signed_action, MultiSigRequest,
+    MultiSigRequestAction, MultiSigRequestPayload, MultisigValidation, MultisigValidationError,
 };
 pub use traits::{Action, L1Action, UserSignedAction};
 pub use user_signed_actions::*;

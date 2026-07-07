@@ -7,8 +7,8 @@ use crate::{
     info::{
         client_builder::InfoClientBuilder,
         types::{
-            InfoRequest, MetaAndAssetCtxsResponse, UserRateLimit, UserRoleResponse,
-            UserStateResponse, UserToMultiSigSignersResponse,
+            InfoRequest, MetaAndAssetCtxsResponse, UserAbstractionResponse, UserRateLimit,
+            UserRoleResponse, UserStateResponse, UserToMultiSigSignersResponse,
         },
     },
     prelude::{Error, Result},
@@ -144,6 +144,16 @@ impl InfoClient {
         })
         .await
     }
+
+    /// Query a user's account abstraction mode.
+    ///
+    /// See [Query a user's abstraction state](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-a-users-abstraction-state).
+    pub async fn user_abstraction(&self, user: &Address) -> Result<UserAbstractionResponse> {
+        self.send_request(InfoRequest::UserAbstraction {
+            user: user.to_owned(),
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -226,6 +236,18 @@ mod tests {
         );
         println!("{:?}", response.meta.universe.first());
         println!("{:?}", response.asset_ctxs.first());
+    }
+
+    #[tokio::test]
+    async fn test_user_abstraction() {
+        let info_client = InfoClient::builder(BaseUrl::Mainnet).build().unwrap();
+        let abstraction = info_client
+            .user_abstraction(
+                &Address::from_str("0x57424C45b9f21903f6496A619FE6145dF881317e").unwrap(),
+            )
+            .await
+            .unwrap();
+        println!("{:?}", abstraction);
     }
 
     #[tokio::test]

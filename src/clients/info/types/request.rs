@@ -90,6 +90,9 @@ pub enum InfoRequest {
     UserRateLimit {
         user: Address,
     },
+    UserAbstraction {
+        user: Address,
+    },
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
