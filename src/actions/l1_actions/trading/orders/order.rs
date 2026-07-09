@@ -35,6 +35,21 @@ pub struct LimitOrderType {
     pub tif: Tif,
 }
 
+impl LimitOrderType {
+    pub const fn gtc() -> Self {
+        Self { tif: Tif::Gtc }
+    }
+
+    /// Immediate-or-cancel — use with a limit price at/through the book for market-style fills.
+    pub const fn ioc() -> Self {
+        Self { tif: Tif::Ioc }
+    }
+
+    pub const fn alo() -> Self {
+        Self { tif: Tif::Alo }
+    }
+}
+
 /// Time-in-force options.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tif {
@@ -129,6 +144,29 @@ impl<'de> Deserialize<'de> for OrderType {
             }
         }
         deserializer.deserialize_map(OrderTypeVisitor)
+    }
+}
+
+impl OrderType {
+    pub fn limit(tif: Tif) -> Self {
+        Self::Limit(LimitOrderType { tif })
+    }
+
+    pub fn limit_gtc() -> Self {
+        Self::Limit(LimitOrderType::gtc())
+    }
+
+    /// IOC limit — Hyperliquid has no separate market type; cross at `limit_px` immediately.
+    pub fn limit_ioc() -> Self {
+        Self::Limit(LimitOrderType::ioc())
+    }
+
+    pub fn trigger(trigger_px: Decimal, is_market: bool, tpsl: TpSl) -> Self {
+        Self::Trigger(TriggerOrderType {
+            trigger_px,
+            is_market,
+            tpsl,
+        })
     }
 }
 

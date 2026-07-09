@@ -7,8 +7,8 @@ use crate::{
     info::{
         client_builder::InfoClientBuilder,
         types::{
-            InfoRequest, MetaAndAssetCtxsResponse, UserAbstractionResponse, UserRateLimit,
-            UserRoleResponse, UserStateResponse, UserToMultiSigSignersResponse,
+            InfoRequest, L2SnapshotResponse, MetaAndAssetCtxsResponse, UserAbstractionResponse,
+            UserRateLimit, UserRoleResponse, UserStateResponse, UserToMultiSigSignersResponse,
         },
     },
     prelude::{Error, Result},
@@ -151,6 +151,14 @@ impl InfoClient {
     pub async fn user_abstraction(&self, user: &Address) -> Result<UserAbstractionResponse> {
         self.send_request(InfoRequest::UserAbstraction {
             user: user.to_owned(),
+        })
+        .await
+    }
+
+    /// L2 order book snapshot for a coin (perp symbol or spot `@index`).
+    pub async fn l2_book(&self, coin: &str) -> Result<L2SnapshotResponse> {
+        self.send_request(InfoRequest::L2Book {
+            coin: coin.to_string(),
         })
         .await
     }

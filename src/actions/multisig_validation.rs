@@ -248,11 +248,18 @@ impl MultiSigRequest {
             }
         }
 
-        // Recompute the inner L1 hash straight from the wire action value.
+        // The signer hashes the L1 action via `L1ActionWrapper`, which always emits `type` first
+        // (`{"type": <action_type>, <payload_key>: {..}}`). The wire payload may carry the keys in
+        // a different order (`serde_json`'s `preserve_order` reflects however the client serialized
+        // it), so recompute against the canonical `type`-first order or the MessagePack — and thus
+        // every recovered signer — won't match the signature.
+        let canonical_action = canonical_l1_action(&payload.action);
+
+        // Recompute the inner L1 hash from the canonical action value.
         let inner_payload = (
             payload.multi_sig_user.to_string().to_lowercase(),
             payload.outer_signer.to_string().to_lowercase(),
-            WireValue(payload.action.clone()),
+            WireValue(canonical_action.clone()),
         );
         let connection_id = compute_l1_hash(
             &inner_payload,
@@ -262,9 +269,9 @@ impl MultiSigRequest {
         )?;
         let inner_signing_hash = agent_signing_hash(connection_id, &signing_chain.get_source());
 
-        // Recompute the outer envelope hash from the same wire payload.
+        // Recompute the outer envelope hash from the same canonical payload.
         let outer_signing_hash = multisig_outer_signing_hash_with_payload_action(
-            payload.action.clone(),
+            canonical_action,
             payload.multi_sig_user,
             payload.outer_signer,
             self.action.signature_chain_id.clone(),
@@ -285,6 +292,31 @@ impl MultiSigRequest {
             authorized_signers,
             threshold,
         )
+    }
+}
+
+/// Reorder a wire L1-action value into the key order the signer hashed it in.
+///
+/// [`crate::actions::serialization::L1ActionWrapper`] serializes L1 actions with `type` first
+/// (nested: `{"type": <action_type>, <payload_key>: {..}}`; flat: `type` then the body fields),
+/// but the transmitted action can arrive with the keys in a different order. Only the top-level
+/// action object is reordered — nested objects were serialized from the same typed structs on
+/// both sides and already agree. A value without a `type` key (or a non-object) is returned as-is.
+fn canonical_l1_action(action: &serde_json::Value) -> serde_json::Value {
+    match action {
+        serde_json::Value::Object(map) if map.contains_key("type") => {
+            let mut ordered = serde_json::Map::new();
+            if let Some(action_type) = map.get("type") {
+                ordered.insert("type".to_string(), action_type.clone());
+            }
+            for (key, value) in map {
+                if key != "type" {
+                    ordered.insert(key.clone(), value.clone());
+                }
+            }
+            serde_json::Value::Object(ordered)
+        }
+        _ => action.clone(),
     }
 }
 
@@ -575,6 +607,41 @@ mod tests {
             .unwrap();
 
         assert_eq!(report.signers, vec![s1.address(), s2.address()]);
+        assert_eq!(report.leader, s1.address());
+    }
+
+    /// Regression: the real client transmits the nested L1 action payload-key-first
+    /// (`{"setOpenInterestCaps": {..}, "type": "perpDeploy"}`) while the signer hashes it
+    /// type-first via `L1ActionWrapper`. Validation must canonicalize to type-first before
+    /// recomputing the hash; otherwise every inner signature recovers to a nonce-dependent
+    /// wrong address and validation fails with `UnauthorizedSigner`.
+    #[test]
+    fn wire_action_payload_key_first_still_validates() {
+        let chain = SigningChain::Testnet;
+        let multi_sig_user = Address::repeat_byte(0xee);
+        let s1 = signer("0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        let json = build_request_json(&chain, multi_sig_user, &s1, &[&s1]);
+
+        // Rewrite payload.action so `type` comes last (payload-key first), exactly as the
+        // client serializes it onto the wire.
+        let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        if let serde_json::Value::Object(map) = &mut value["action"]["payload"]["action"] {
+            let type_val = map.remove("type").expect("action has a type");
+            map.insert("type".to_string(), type_val); // re-insert at the end
+        }
+        let reordered = serde_json::to_string(&value).unwrap();
+        // Confirm we actually reproduced the payload-key-first wire order.
+        assert!(
+            reordered.find("setOpenInterestCaps").unwrap()
+                < reordered.find("\"type\":\"perpDeploy\"").unwrap(),
+            "test setup should place the payload key before type"
+        );
+
+        let request = MultiSigRequest::from_json(&reordered).unwrap();
+        let report = request
+            .validate(multi_sig_user, &[s1.address()], 1, &chain)
+            .expect("payload-key-first wire must still validate after canonicalization");
+        assert_eq!(report.signers, vec![s1.address()]);
         assert_eq!(report.leader, s1.address());
     }
 
