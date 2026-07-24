@@ -237,6 +237,8 @@ pub struct WsFill {
     pub tid: u64,
     pub fee_token: String,
     #[serde(default)]
+    pub cloid: Option<String>,
+    #[serde(default)]
     pub liquidation: Option<FillLiquidation>,
     #[serde(default)]
     #[serde(deserialize_with = "serde_decimal::de_opt")]
