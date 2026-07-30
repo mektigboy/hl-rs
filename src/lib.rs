@@ -22,8 +22,6 @@ pub use prelude::Result;
 pub use types::{BaseUrl, SigningChain};
 
 #[cfg(feature = "ws")]
-pub use clients::ws::{
-    responses, Price, Subscription, WsActiveAssetCtx, WsClient, WsMessage,
-};
+pub use clients::ws::{responses, Price, Subscription, WsActiveAssetCtx, WsClient, WsMessage};
 
 pub use actions::*;

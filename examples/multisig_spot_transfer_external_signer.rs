@@ -13,8 +13,9 @@ use alloy::primitives::{address, Address};
 use alloy::signers::local::PrivateKeySigner;
 use alloy_signer::SignerSync;
 use hl_rs::{
-    assemble_signed_multisig_action, build_multisig_action, multisig_inner_user_signed_signing_hash,
-    multisig_outer_signing_hash, BaseUrl, ExchangeClient, SpotTransfer,
+    assemble_signed_multisig_action, build_multisig_action,
+    multisig_inner_user_signed_signing_hash, multisig_outer_signing_hash, BaseUrl, ExchangeClient,
+    SpotTransfer,
 };
 use rust_decimal_macros::dec;
 

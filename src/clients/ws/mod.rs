@@ -13,11 +13,11 @@ mod subscription;
 pub use message::WsMessage;
 pub use responses::{
     AllMids, Candle, Notification, OpenOrders, PerpsAssetCtx, Price, SpotAssetCtx, TwapState,
-    TwapStates, UserBalance, WsActiveAssetCtx, WsActiveAssetData, WsAllDexsAssetCtxs,
+    TwapStates, UserBalance, WebData3, WsActiveAssetCtx, WsActiveAssetData, WsAllDexsAssetCtxs,
     WsAllDexsClearinghouseState, WsBasicOrder, WsBbo, WsBook, WsFill, WsLevel, WsLiquidation,
     WsNonUserCancel, WsOrder, WsSpotState, WsTrade, WsUserEvent, WsUserFunding, WsUserFundings,
     WsUserNonFundingLedgerUpdate, WsUserNonFundingLedgerUpdates, WsUserTwapHistory,
-    WsUserTwapSliceFills, WebData3,
+    WsUserTwapSliceFills,
 };
 pub use subscription::Subscription;
 
@@ -25,9 +25,7 @@ use futures_util::{SinkExt, StreamExt};
 use message::WsRequest;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
-    connect_async,
-    tungstenite::protocol::Message,
-    MaybeTlsStream, WebSocketStream,
+    connect_async, tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream,
 };
 
 use crate::error::Error;

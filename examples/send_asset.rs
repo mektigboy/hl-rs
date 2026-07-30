@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use alloy::primitives::{Address, address};
+use alloy::primitives::{address, Address};
 use alloy::signers::local::PrivateKeySigner;
 use hl_rs::{BaseUrl, DexId, ExchangeClient, SendAsset};
 use rust_decimal_macros::dec;

@@ -35,9 +35,8 @@ use serde::Deserialize;
 use crate::{Error, SigningChain};
 
 use super::{
-    agent_signing_hash, compute_l1_hash,
-    multisig::multisig_outer_signing_hash_with_payload_action, serialization::WireValue,
-    ActionKind,
+    agent_signing_hash, compute_l1_hash, multisig::multisig_outer_signing_hash_with_payload_action,
+    serialization::WireValue, ActionKind,
 };
 
 /// A `multiSig` request in the exact JSON shape submitted to `/exchange`.
@@ -153,7 +152,9 @@ pub enum MultisigValidationError {
     #[error("inner signature #{index} could not be recovered: {reason}")]
     UnrecoverableSignature { index: usize, reason: String },
 
-    #[error("inner signature #{index} recovered to {recovered}, which is not an authorized signer")]
+    #[error(
+        "inner signature #{index} recovered to {recovered}, which is not an authorized signer"
+    )]
     UnauthorizedSigner { index: usize, recovered: Address },
 
     #[error("authorized signer {recovered} signed more than once")]
@@ -195,12 +196,10 @@ impl MultiSigRequest {
     /// becomes [`ActionKind::Unknown`] with the raw value preserved. It never
     /// affects validation, which hashes the raw wire value regardless.
     pub fn inner_action_kind(&self) -> Result<ActionKind, Error> {
-        let obj = self
-            .action
-            .payload
-            .action
-            .as_object()
-            .ok_or_else(|| Error::JsonParse("inner action must be a JSON object".to_string()))?;
+        let obj =
+            self.action.payload.action.as_object().ok_or_else(|| {
+                Error::JsonParse("inner action must be a JSON object".to_string())
+            })?;
         super::dispatch_action_kind::<serde_json::Error>(obj)
             .map_err(|e| Error::JsonParse(e.to_string()))
     }

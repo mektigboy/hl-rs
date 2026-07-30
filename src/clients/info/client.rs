@@ -43,10 +43,7 @@ impl InfoClient {
     /// Pass `dex` to query a HIP-3 dex; omit it for the default clearinghouse.
     ///
     /// See [Retrieve perpetuals metadata (universe and margin tables)](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables).
-    pub async fn meta_and_asset_ctxs(
-        &self,
-        dex: Option<&str>,
-    ) -> Result<MetaAndAssetCtxsResponse> {
+    pub async fn meta_and_asset_ctxs(&self, dex: Option<&str>) -> Result<MetaAndAssetCtxsResponse> {
         self.send_request(InfoRequest::MetaAndAssetCtxs {
             dex: dex.map(str::to_string),
         })
@@ -203,7 +200,11 @@ mod tests {
         println!("{:?}", perp_dexs);
 
         for (i, dex) in perp_dexs.iter().enumerate() {
-            assert_eq!(dex.id, (i as u32) + 1, "dex ids must be sequential starting at 1");
+            assert_eq!(
+                dex.id,
+                (i as u32) + 1,
+                "dex ids must be sequential starting at 1"
+            );
         }
     }
 

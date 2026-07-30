@@ -35,7 +35,11 @@ fn l2_book_wire_passes_outer_is_snapshot_true() {
 
     match m {
         WsMessage::L2Book { data, is_snapshot } => {
-            assert_eq!(is_snapshot, Some(true), "outer isSnapshot must not be dropped");
+            assert_eq!(
+                is_snapshot,
+                Some(true),
+                "outer isSnapshot must not be dropped"
+            );
             assert_eq!(data.coin, "ETH");
             assert_eq!(data.time, 1_712_764_800_000_u64);
             assert_eq!(data.levels[0].len(), 1);
@@ -97,10 +101,7 @@ async fn l2_book_live_receives_book_and_preserves_is_snapshot() {
             let m = res.expect("parse WsMessage");
             match m {
                 WsMessage::SubscriptionResponse { .. } | WsMessage::Pong => continue,
-                WsMessage::L2Book {
-                    data,
-                    is_snapshot,
-                } => return (data, is_snapshot),
+                WsMessage::L2Book { data, is_snapshot } => return (data, is_snapshot),
                 _ => continue,
             }
         }
@@ -142,7 +143,11 @@ fn bbo_wire_passes_outer_is_snapshot_true() {
 
     match m {
         WsMessage::Bbo { data, is_snapshot } => {
-            assert_eq!(is_snapshot, Some(true), "outer isSnapshot must not be dropped");
+            assert_eq!(
+                is_snapshot,
+                Some(true),
+                "outer isSnapshot must not be dropped"
+            );
             assert_eq!(data.coin, "ETH");
             assert_eq!(data.time, 1_712_764_800_000_u64);
             let bid = data.bbo[0].as_ref().expect("bid");
@@ -191,9 +196,7 @@ async fn bbo_live_receives_bbo_and_preserves_is_snapshot() {
         .expect("connect to HL_WS_URL / mainnet");
 
     client
-        .subscribe(Subscription::Bbo {
-            coin: coin.clone(),
-        })
+        .subscribe(Subscription::Bbo { coin: coin.clone() })
         .await
         .expect("subscribe bbo");
 
@@ -202,10 +205,7 @@ async fn bbo_live_receives_bbo_and_preserves_is_snapshot() {
             let m = res.expect("parse WsMessage");
             match m {
                 WsMessage::SubscriptionResponse { .. } | WsMessage::Pong => continue,
-                WsMessage::Bbo {
-                    data,
-                    is_snapshot,
-                } => return (data, is_snapshot),
+                WsMessage::Bbo { data, is_snapshot } => return (data, is_snapshot),
                 _ => continue,
             }
         }

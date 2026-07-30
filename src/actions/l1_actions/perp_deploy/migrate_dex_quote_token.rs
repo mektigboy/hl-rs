@@ -21,11 +21,7 @@ pub struct MigrateDexQuoteToken {
 }
 
 impl MigrateDexQuoteToken {
-    pub fn new(
-        dex: impl Into<String>,
-        new_dex: impl Into<String>,
-        schema: PerpDexSchema,
-    ) -> Self {
+    pub fn new(dex: impl Into<String>, new_dex: impl Into<String>, schema: PerpDexSchema) -> Self {
         Self {
             dex: dex.into(),
             new_dex: new_dex.into(),

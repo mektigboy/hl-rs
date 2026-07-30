@@ -6,21 +6,23 @@
 //! HL_PRIVATE_KEY=0x... cargo test --features integration-tests integration_perp_deploy
 //! ```
 
-
 mod common;
 
-use alloy::primitives::{Address, address};
+use alloy::primitives::{address, Address};
 
-use hl_rs::{ExchangeClient, actions::{
-    AssetRequest, InsertMarginTable, PerpDexSchema, RegisterAsset, SetFeeRecipient,
-    SetFundingMultipliers, SetGrowthModes, SetMarginTableIds, SetOpenInterestCaps, SetOracle,
-    SetSubDeployers, SubDeployerVariant, ToggleTrading,
-}};
+use hl_rs::{
+    actions::{
+        AssetRequest, InsertMarginTable, PerpDexSchema, RegisterAsset, SetFeeRecipient,
+        SetFundingMultipliers, SetGrowthModes, SetMarginTableIds, SetOpenInterestCaps, SetOracle,
+        SetSubDeployers, SubDeployerVariant, ToggleTrading,
+    },
+    ExchangeClient,
+};
 use rust_decimal_macros::dec;
 
 use crate::common::{
-    log_action, log_response, send_action,
-    signer_address, test_addresses::test_destination, test_dex, testnet_client,
+    log_action, log_response, send_action, signer_address, test_addresses::test_destination,
+    test_dex, testnet_client,
 };
 
 // ============================================================================
@@ -330,9 +332,12 @@ async fn test_set_sub_deployers_multisig_request() {
     let client = testnet_client();
 
     //let mut action = SetSubDeployers::new(test_dex::PERP_DEX)
-     //   .enable_permissions(test_destination(), vec![SubDeployerVariant::SetOracle]);
+    //   .enable_permissions(test_destination(), vec![SubDeployerVariant::SetOracle]);
 
-        let mut action = SetFeeRecipient::new(test_dex::PERP_DEX, address!("0xFE09176D7615fd49b6b1Eeb538d0a8D2eb84d218"));
+    let mut action = SetFeeRecipient::new(
+        test_dex::PERP_DEX,
+        address!("0xFE09176D7615fd49b6b1Eeb538d0a8D2eb84d218"),
+    );
 
     action.nonce = Some(ExchangeClient::current_timestamp_ms());
     log_action("SetSubDeployers (multisig request)", &action);
@@ -341,7 +346,6 @@ async fn test_set_sub_deployers_multisig_request() {
     let inner_signature = client
         .sign_multisig_inner_action(action.clone(), multisig_user, signer)
         .expect("outer signer should be able to sign inner multisig payload");
-
 
     let result = client
         .send_multisig_action(action, multisig_user, signer, vec![inner_signature])

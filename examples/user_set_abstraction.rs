@@ -28,7 +28,10 @@ async fn main() {
     let action = UserSetAbstraction::new(wallet.address(), AbstractionMode::Disabled);
 
     println!("wallet: {}", wallet.address());
-    println!("setting abstraction to `{}`", AbstractionMode::Disabled.as_str());
+    println!(
+        "setting abstraction to `{}`",
+        AbstractionMode::Disabled.as_str()
+    );
 
     let client = ExchangeClient::new(BaseUrl::Testnet).with_signer(wallet);
     let result = client

@@ -127,7 +127,8 @@ impl ExchangeClient {
         action: A,
         wallet: &PrivateKeySigner,
     ) -> Result<SignedAction<A>, Error> {
-        self.prepare_action(self.ensure_action_nonce(action))?.sign(wallet)
+        self.prepare_action(self.ensure_action_nonce(action))?
+            .sign(wallet)
     }
 
     pub async fn send_signed_action<A: Action + Serialize>(
@@ -146,7 +147,10 @@ impl ExchangeClient {
         action: A,
     ) -> Result<ExchangeResponse, Error> {
         let prepared = self.prepare_action(self.ensure_action_nonce(action))?;
-        let signer = self.signer_private_key.as_ref().ok_or(Error::SignerNotSet)?;
+        let signer = self
+            .signer_private_key
+            .as_ref()
+            .ok_or(Error::SignerNotSet)?;
         let signed = prepared.sign(signer)?;
         self.send_signed_action(signed).await
     }
@@ -238,8 +242,12 @@ impl ExchangeClient {
             outer_signer.to_string().to_lowercase(),
             crate::actions::L1ActionWrapper { action: &action },
         );
-        let connection_id =
-            compute_l1_hash(&inner_payload, nonce, self.vault_address, self.expires_after)?;
+        let connection_id = compute_l1_hash(
+            &inner_payload,
+            nonce,
+            self.vault_address,
+            self.expires_after,
+        )?;
         let signing_hash = agent_signing_hash(connection_id, &signing_chain.get_source());
 
         let signer = self
@@ -477,7 +485,11 @@ mod tests {
         let nonce = 1_700_000_000_000;
         let mut action = SpotTransfer::new(Address::repeat_byte(0xaa), "HYPE", dec!(0.01));
         action.nonce = Some(nonce);
-        let inner_signatures = vec![alloy_signer::Signature::new(U256::from(7), U256::from(9), false)];
+        let inner_signatures = vec![alloy_signer::Signature::new(
+            U256::from(7),
+            U256::from(9),
+            false,
+        )];
 
         let wrapped = build_multisig_action(
             &action,

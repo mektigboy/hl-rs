@@ -50,8 +50,8 @@ impl ReserveRequestWeight {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::SigningChain;
     use crate::actions::{PreparedAction, SignedActionKind};
+    use crate::SigningChain;
     use alloy::primitives::U256;
     use alloy_signer::Signature;
     use serde_json::json;

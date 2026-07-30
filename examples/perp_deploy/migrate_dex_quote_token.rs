@@ -10,11 +10,7 @@ async fn main() {
     let url = BaseUrl::Testnet;
 
     // Note: this action is intended only for migrating USDH DEXes.
-    let action = MigrateDexQuoteToken::new(
-        "slob",
-        "blob",
-        PerpDexSchema::new("New Slob Dex", 0),
-    );
+    let action = MigrateDexQuoteToken::new("slob", "blob", PerpDexSchema::new("New Slob Dex", 0));
 
     let private_key = std::env::var("PRIVATE_KEY").unwrap();
     let wallet = PrivateKeySigner::from_str(&private_key).unwrap();

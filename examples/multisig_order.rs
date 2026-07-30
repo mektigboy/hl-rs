@@ -100,7 +100,12 @@ async fn main() {
         .sign_multisig_inner_action(cancel.clone(), MULTI_SIG_USER, signer_address)
         .expect("authorized signer should sign inner cancel payload");
     let cancel_result = client
-        .send_multisig_action(cancel, MULTI_SIG_USER, signer_address, vec![inner_signature])
+        .send_multisig_action(
+            cancel,
+            MULTI_SIG_USER,
+            signer_address,
+            vec![inner_signature],
+        )
         .await
         .expect("multisig cancel failed");
     println!("multisig cancel result: {cancel_result:?}");

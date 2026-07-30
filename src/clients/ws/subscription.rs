@@ -14,10 +14,14 @@ pub enum Subscription {
         dex: Option<String>,
     },
 
-    Notification { user: String },
+    Notification {
+        user: String,
+    },
 
     #[serde(rename = "webData3")]
-    WebData3 { user: String },
+    WebData3 {
+        user: String,
+    },
 
     #[serde(rename = "twapStates")]
     TwapStates {
@@ -34,7 +38,10 @@ pub enum Subscription {
     },
 
     #[serde(rename = "openOrders")]
-    OpenOrders { user: String, dex: Option<String> },
+    OpenOrders {
+        user: String,
+        dex: Option<String>,
+    },
 
     Candle {
         coin: String,
@@ -50,13 +57,19 @@ pub enum Subscription {
         mantissa: Option<i32>,
     },
 
-    Trades { coin: String },
+    Trades {
+        coin: String,
+    },
 
     #[serde(rename = "orderUpdates")]
-    OrderUpdates { user: String },
+    OrderUpdates {
+        user: String,
+    },
 
     #[serde(rename = "userEvents")]
-    UserEvents { user: String },
+    UserEvents {
+        user: String,
+    },
 
     #[serde(rename = "userFills")]
     UserFills {
@@ -66,24 +79,39 @@ pub enum Subscription {
     },
 
     #[serde(rename = "userFundings")]
-    UserFundings { user: String },
+    UserFundings {
+        user: String,
+    },
 
     #[serde(rename = "userNonFundingLedgerUpdates")]
-    UserNonFundingLedgerUpdates { user: String },
+    UserNonFundingLedgerUpdates {
+        user: String,
+    },
 
     #[serde(rename = "activeAssetCtx")]
-    ActiveAssetCtx { coin: String },
+    ActiveAssetCtx {
+        coin: String,
+    },
 
     #[serde(rename = "activeAssetData")]
-    ActiveAssetData { user: String, coin: String },
+    ActiveAssetData {
+        user: String,
+        coin: String,
+    },
 
     #[serde(rename = "userTwapSliceFills")]
-    UserTwapSliceFills { user: String },
+    UserTwapSliceFills {
+        user: String,
+    },
 
     #[serde(rename = "userTwapHistory")]
-    UserTwapHistory { user: String },
+    UserTwapHistory {
+        user: String,
+    },
 
-    Bbo { coin: String },
+    Bbo {
+        coin: String,
+    },
 
     #[serde(rename = "spotState")]
     SpotState {
@@ -93,7 +121,9 @@ pub enum Subscription {
     },
 
     #[serde(rename = "allDexsClearinghouseState")]
-    AllDexsClearinghouseState { user: String },
+    AllDexsClearinghouseState {
+        user: String,
+    },
 
     #[serde(rename = "allDexsAssetCtxs")]
     AllDexsAssetCtxs,

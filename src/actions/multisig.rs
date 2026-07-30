@@ -15,8 +15,8 @@ use crate::{
 };
 
 use super::{
-    agent_signing_hash, build_action_value, build_multisig_inner_action_value,
-    compute_l1_hash, core::current_timestamp_ms, traits::UserSignedAction, Action, L1ActionWrapper,
+    agent_signing_hash, build_action_value, build_multisig_inner_action_value, compute_l1_hash,
+    core::current_timestamp_ms, traits::UserSignedAction, Action, L1ActionWrapper,
 };
 
 /// Wrapper payload used by Hyperliquid `multiSig` actions.
@@ -178,7 +178,8 @@ pub(crate) fn multisig_outer_signing_hash_with_action<A: Action + Serialize>(
             action: L1ActionWrapper { action },
         },
     };
-    let multi_sig_action_hash = compute_l1_hash(&signing_payload, nonce, vault_address, expires_after)?;
+    let multi_sig_action_hash =
+        compute_l1_hash(&signing_payload, nonce, vault_address, expires_after)?;
 
     Ok(send_multisig_envelope_signing_hash(
         multi_sig_action_hash,
@@ -208,7 +209,8 @@ pub(crate) fn multisig_outer_signing_hash_with_payload_action(
             action: WireValue(payload_action.clone()),
         },
     };
-    let multi_sig_action_hash = compute_l1_hash(&signing_payload, nonce, vault_address, expires_after)?;
+    let multi_sig_action_hash =
+        compute_l1_hash(&signing_payload, nonce, vault_address, expires_after)?;
 
     Ok(send_multisig_envelope_signing_hash(
         multi_sig_action_hash,
@@ -425,13 +427,14 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        build_multisig_action, multisig_inner_signing_hash, multisig_inner_user_signed_signing_hash,
-        multisig_outer_signing_hash, send_multisig_envelope_signing_hash, signature_chain_id_hex,
-        MultiSigAction, MultiSigPayload,
+        build_multisig_action, multisig_inner_signing_hash,
+        multisig_inner_user_signed_signing_hash, multisig_outer_signing_hash,
+        send_multisig_envelope_signing_hash, signature_chain_id_hex, MultiSigAction,
+        MultiSigPayload,
     };
     use crate::actions::compute_l1_hash;
     use crate::actions::traits::UserSignedAction;
-    use crate::{SpotTransfer, ToggleBigBlocks, SigningChain};
+    use crate::{SigningChain, SpotTransfer, ToggleBigBlocks};
 
     fn test_signature(v: u64) -> Signature {
         Signature::new(U256::from(v), U256::from(v + 1), false)
@@ -537,11 +540,24 @@ mod tests {
         let multi_sig_user = Address::repeat_byte(0x11);
         let outer_signer = Address::repeat_byte(0x22);
 
-        let (_, hashes_a) =
-            multisig_inner_signing_hash(action.clone(), multi_sig_user, outer_signer, &signing_chain, None, None)
-                .unwrap();
-        let (_, hashes_b) =
-            multisig_inner_signing_hash(action, multi_sig_user, outer_signer, &signing_chain, None, None).unwrap();
+        let (_, hashes_a) = multisig_inner_signing_hash(
+            action.clone(),
+            multi_sig_user,
+            outer_signer,
+            &signing_chain,
+            None,
+            None,
+        )
+        .unwrap();
+        let (_, hashes_b) = multisig_inner_signing_hash(
+            action,
+            multi_sig_user,
+            outer_signer,
+            &signing_chain,
+            None,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(hashes_a.inner_signing_hash, hashes_b.inner_signing_hash);
         assert_eq!(hashes_a.nonce, 1_700_000_000_000);
@@ -559,7 +575,9 @@ mod tests {
             None,
         )
         .unwrap_err();
-        assert!(err.to_string().contains("multisig_inner_user_signed_signing_hash"));
+        assert!(err
+            .to_string()
+            .contains("multisig_inner_user_signed_signing_hash"));
     }
 
     #[test]

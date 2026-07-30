@@ -68,7 +68,10 @@ async fn main() {
         mark_prices.push((asset.name.clone(), ctx.mark_px.clone()));
     }
 
-    assert!(!oracle_pxs.is_empty(), "No live (non-delisted) assets found for dddd");
+    assert!(
+        !oracle_pxs.is_empty(),
+        "No live (non-delisted) assets found for dddd"
+    );
 
     let action = SetOracle {
         dex: dex_name.to_string(),

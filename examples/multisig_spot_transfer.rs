@@ -43,7 +43,12 @@ async fn main() {
         .expect("authorized signer should sign inner multisig payload");
 
     let result = client
-        .send_multisig_action(action, MULTI_SIG_USER, signer_address, vec![inner_signature])
+        .send_multisig_action(
+            action,
+            MULTI_SIG_USER,
+            signer_address,
+            vec![inner_signature],
+        )
         .await
         .expect("multisig spot transfer failed");
 
