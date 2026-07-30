@@ -81,12 +81,11 @@ pub(crate) fn compute_l1_hash<T: Serialize>(
 
 #[cfg(test)]
 mod tests {
-    use alloy::primitives::Address;
     use alloy::signers::{local::PrivateKeySigner, SignerSync};
     use rust_decimal_macros::dec;
 
     use super::SigningMeta;
-    use crate::actions::{Action, ToggleBigBlocks, UsdSend};
+    use crate::actions::{Action, UsdSend};
     use crate::SigningChain;
 
     #[test]
@@ -130,54 +129,30 @@ mod tests {
     }
 
     #[test]
-    fn test_multisig_signing_hash_consistent_l1() {
-        let signing_chain = SigningChain::Testnet;
-        let meta = SigningMeta {
-            nonce: 123456,
-            vault_address: None,
-            expires_after: None,
-            signing_chain: &signing_chain,
-        };
+    fn test_user_set_abstraction_signing_hardcoded() {
+        use alloy::signers::{local::PrivateKeySigner, SignerSync};
 
-        let action = ToggleBigBlocks::enable();
-        let payload_multi_sig_user = Address::repeat_byte(0x11);
-        let outer_signer = Address::repeat_byte(0x22);
+        use crate::actions::{AbstractionMode, UserSetAbstraction};
 
-        let hash1 = action
-            .multisig_signing_hash(&meta, payload_multi_sig_user, outer_signer)
-            .unwrap();
-        let hash2 = action
-            .multisig_signing_hash(&meta, payload_multi_sig_user, outer_signer)
-            .unwrap();
+        let wallet: PrivateKeySigner =
+            "e908f86dbb4d55ac876378565aafeabc187f6690f046459397b17d9b9a19688e"
+                .parse()
+                .unwrap();
+        let signing_chain = SigningChain::Mainnet;
+        let prepared = crate::actions::PreparedAction::new(
+            UserSetAbstraction {
+                user: wallet.address(),
+                abstraction: AbstractionMode::Disabled,
+                nonce: Some(1700000000000),
+            },
+            &signing_chain,
+            None,
+            None,
+        )
+        .unwrap();
+        let signed = prepared.sign(&wallet).unwrap();
 
-        assert_eq!(hash1, hash2);
-    }
-
-    #[test]
-    fn test_multisig_signing_hash_consistent_user_signed() {
-        let signing_chain = SigningChain::Testnet;
-        let meta = SigningMeta {
-            nonce: 424242,
-            vault_address: None,
-            expires_after: None,
-            signing_chain: &signing_chain,
-        };
-
-        let action = UsdSend {
-            destination: Address::repeat_byte(0x33),
-            amount: dec!(10.5),
-            nonce: Some(424242),
-        };
-        let payload_multi_sig_user = Address::repeat_byte(0x44);
-        let outer_signer = Address::repeat_byte(0x55);
-
-        let hash1 = action
-            .multisig_signing_hash(&meta, payload_multi_sig_user, outer_signer)
-            .unwrap();
-        let hash2 = action
-            .multisig_signing_hash(&meta, payload_multi_sig_user, outer_signer)
-            .unwrap();
-
-        assert_eq!(hash1, hash2);
+        let expected_sig = "0x5e9d2fcbc9f4cecf997dd7ad72dabf096c2c772aacdedfe4fe558948bc504989026be4dfd8bab24982eca3cac8fb5a1cc2f5bbcf95af94f59da079653a86c7141c";
+        assert_eq!(signed.signature.to_string(), expected_sig);
     }
 }

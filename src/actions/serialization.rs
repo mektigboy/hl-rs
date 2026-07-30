@@ -2,7 +2,7 @@ use alloy::primitives::{Address, U256};
 use alloy_signer::Signature;
 use serde::{
     de::DeserializeOwned,
-    ser::{Error, SerializeMap, SerializeStruct},
+    ser::{Error, SerializeMap, SerializeSeq, SerializeStruct},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
@@ -242,18 +242,19 @@ impl<'de> Deserialize<'de> for SignedActionKind {
     }
 }
 
-fn serialize_sig<S>(sig: &Signature, serializer: S) -> Result<S::Ok, S::Error>
+pub(crate) fn serialize_sig<S>(sig: &Signature, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     let mut state = serializer.serialize_struct("Signature", 3)?;
-    state.serialize_field("r", &format!("0x{:064x}", sig.r()))?;
-    state.serialize_field("s", &format!("0x{:064x}", sig.s()))?;
+    // Match Python SDK `to_hex`: unpadded lowercase hex (msgpack hash is sensitive to this).
+    state.serialize_field("r", &format!("0x{:x}", sig.r()))?;
+    state.serialize_field("s", &format!("0x{:x}", sig.s()))?;
     state.serialize_field("v", &(27 + sig.v() as u64))?;
     state.end()
 }
 
-fn deserialize_sig<'de, D>(deserializer: D) -> Result<Signature, D::Error>
+pub(crate) fn deserialize_sig<'de, D>(deserializer: D) -> Result<Signature, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -302,6 +303,275 @@ where
     serializer.serialize_str(&address.to_string().to_lowercase())
 }
 
+/// Msgpack key order follows insertion order. `serde_json::Value` serialization through
+/// `rmp_serde` sorts object keys alphabetically, so wire payloads must use this wrapper.
+#[derive(Debug, Clone)]
+pub(crate) struct WireValue(pub serde_json::Value);
+
+impl Serialize for WireValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serialize_wire_value(&self.0, serializer)
+    }
+}
+
+fn serialize_wire_value<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut state = serializer.serialize_map(Some(map.len()))?;
+            for (key, value) in map {
+                state.serialize_entry(key, &WireValue(value.clone()))?;
+            }
+            state.end()
+        }
+        serde_json::Value::Array(values) => {
+            let mut seq = serializer.serialize_seq(Some(values.len()))?;
+            for value in values {
+                seq.serialize_element(&WireValue(value.clone()))?;
+            }
+            seq.end()
+        }
+        other => other.serialize(serializer),
+    }
+}
+
+/// Multisig inner-action wire order (type and chain fields first).
+/// Reference: hyperliquid-python-sdk `examples/multi_sig_usd_send.py` and issue #177.
+fn multisig_inner_wire_field_order(action_type: &str) -> &'static [&'static str] {
+    match action_type {
+        "spotSend" => &[
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+            "destination",
+            "token",
+            "amount",
+            "time",
+        ],
+        "usdSend" | "withdraw3" => &[
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+            "destination",
+            "amount",
+            "time",
+        ],
+        "sendAsset" => &[
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+            "destination",
+            "sourceDex",
+            "destinationDex",
+            "token",
+            "amount",
+            "fromSubAccount",
+            "nonce",
+        ],
+        "usdClassTransfer" => &[
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+            "amount",
+            "toPerp",
+            "nonce",
+        ],
+        "tokenDelegate" => &[
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+            "validator",
+            "wei",
+            "isUndelegate",
+            "nonce",
+        ],
+        "convertToMultiSigUser" => &[
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+            "signers",
+            "nonce",
+        ],
+        _ => &[],
+    }
+}
+
+/// Python SDK insertion order for regular signed-action wire payloads.
+fn user_signed_wire_field_order(action_type: &str) -> &'static [&'static str] {
+    match action_type {
+        "spotSend" => &[
+            "destination",
+            "amount",
+            "token",
+            "time",
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        "usdSend" | "withdraw3" => &[
+            "destination",
+            "amount",
+            "time",
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        "tokenDelegate" => &[
+            "validator",
+            "wei",
+            "isUndelegate",
+            "nonce",
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        "usdClassTransfer" => &[
+            "type",
+            "amount",
+            "toPerp",
+            "nonce",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        "sendAsset" => &[
+            "destination",
+            "sourceDex",
+            "destinationDex",
+            "token",
+            "amount",
+            "fromSubAccount",
+            "nonce",
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        "convertToMultiSigUser" => &[
+            "type",
+            "signers",
+            "nonce",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        "userSetAbstraction" => &[
+            "user",
+            "abstraction",
+            "nonce",
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        "userDexAbstraction" => &[
+            "user",
+            "enabled",
+            "nonce",
+            "type",
+            "signatureChainId",
+            "hyperliquidChain",
+        ],
+        _ => &[],
+    }
+}
+
+fn build_user_signed_wire_object_with_order<T: Action + Serialize>(
+    action: &T,
+    signing_chain: &SigningChain,
+    ordered_keys: &'static [&'static str],
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let payload_value = serde_json::to_value(action).map_err(|e| e.to_string())?;
+    let mut payload = payload_value
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "action payload must be object".to_string())?;
+
+    if T::uses_time() && payload.contains_key("nonce") && !payload.contains_key("time") {
+        if let Some(nonce_value) = payload.remove("nonce") {
+            payload.insert("time".to_string(), nonce_value);
+        }
+    }
+
+    let signature_chain_id = format!("0x{:x}", signing_chain.get_signature_chain_id());
+    let hyperliquid_chain = signing_chain.get_hyperliquid_chain();
+    let mut action_obj = serde_json::Map::new();
+    if ordered_keys.is_empty() {
+        for (key, value) in payload {
+            action_obj.insert(key, value);
+        }
+        action_obj.insert(
+            "type".to_string(),
+            serde_json::Value::String(T::ACTION_TYPE.to_string()),
+        );
+        action_obj.insert(
+            "signatureChainId".to_string(),
+            serde_json::Value::String(signature_chain_id),
+        );
+        action_obj.insert(
+            "hyperliquidChain".to_string(),
+            serde_json::Value::String(hyperliquid_chain),
+        );
+        return Ok(action_obj);
+    }
+
+    for key in ordered_keys {
+        match *key {
+            "type" => {
+                action_obj.insert(
+                    "type".to_string(),
+                    serde_json::Value::String(T::ACTION_TYPE.to_string()),
+                );
+            }
+            "signatureChainId" => {
+                action_obj.insert(
+                    "signatureChainId".to_string(),
+                    serde_json::Value::String(signature_chain_id.clone()),
+                );
+            }
+            "hyperliquidChain" => {
+                action_obj.insert(
+                    "hyperliquidChain".to_string(),
+                    serde_json::Value::String(hyperliquid_chain.clone()),
+                );
+            }
+            field => {
+                if let Some(value) = payload.get(field) {
+                    action_obj.insert(field.to_string(), value.clone());
+                }
+            }
+        }
+    }
+
+    Ok(action_obj)
+}
+
+fn build_user_signed_wire_object<T: Action + Serialize>(
+    action: &T,
+    signing_chain: &SigningChain,
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    build_user_signed_wire_object_with_order(
+        action,
+        signing_chain,
+        user_signed_wire_field_order(T::ACTION_TYPE),
+    )
+}
+
+/// Wire-format inner action for multisig payloads (distinct field order from regular actions).
+pub(crate) fn build_multisig_inner_action_value<T: Action + Serialize>(
+    action: &T,
+    signing_chain: &SigningChain,
+) -> Result<serde_json::Value, String> {
+    Ok(serde_json::Value::Object(
+        build_user_signed_wire_object_with_order(
+            action,
+            signing_chain,
+            multisig_inner_wire_field_order(T::ACTION_TYPE),
+        )?,
+    ))
+}
+
 impl<T: Action + DeserializeOwned> SignedAction<T> {
     /// Deserialize from the exchange API format
     pub fn from_json(json: &str) -> Result<Self, crate::Error> {
@@ -309,7 +579,7 @@ impl<T: Action + DeserializeOwned> SignedAction<T> {
     }
 }
 
-fn build_action_value<T: Action + Serialize>(
+pub(crate) fn build_action_value<T: Action + Serialize>(
     action: &T,
     signing_chain: Option<&SigningChain>,
 ) -> Result<serde_json::Value, String> {
@@ -319,9 +589,21 @@ fn build_action_value<T: Action + Serialize>(
     if T::is_user_signed() {
         let signing_chain = signing_chain
             .ok_or_else(|| "signing_chain must be set for user-signed actions".to_string())?;
+        if T::PAYLOAD_KEY == T::ACTION_TYPE {
+            return Ok(serde_json::Value::Object(build_user_signed_wire_object(
+                action,
+                signing_chain,
+            )?));
+        }
+
         let obj = payload
             .as_object_mut()
             .ok_or_else(|| "action payload must be object".to_string())?;
+        if T::uses_time() && obj.contains_key("nonce") && !obj.contains_key("time") {
+            if let Some(nonce_value) = obj.remove("nonce") {
+                obj.insert("time".to_string(), nonce_value);
+            }
+        }
         obj.insert(
             "signatureChainId".to_string(),
             serde_json::Value::String(format!("0x{:x}", signing_chain.get_signature_chain_id())),
@@ -330,11 +612,6 @@ fn build_action_value<T: Action + Serialize>(
             "hyperliquidChain".to_string(),
             serde_json::Value::String(signing_chain.get_hyperliquid_chain()),
         );
-        if T::uses_time() && obj.contains_key("nonce") && !obj.contains_key("time") {
-            if let Some(nonce_value) = obj.remove("nonce") {
-                obj.insert("time".to_string(), nonce_value);
-            }
-        }
     }
 
     let mut action_obj = serde_json::Map::new();
@@ -343,8 +620,6 @@ fn build_action_value<T: Action + Serialize>(
         serde_json::Value::String(T::ACTION_TYPE.to_string()),
     );
 
-    // If the payload key is the same as the action type, we can just use the payload directly
-    // This will effectively flatten the payload
     if T::PAYLOAD_KEY == T::ACTION_TYPE {
         let payload = payload
             .as_object()
@@ -354,7 +629,6 @@ fn build_action_value<T: Action + Serialize>(
             action_obj.insert(key, value);
         }
     } else {
-        // If the payload key is different from the action type, we need to insert the payload key and value
         action_obj.insert(T::PAYLOAD_KEY.to_string(), payload);
     }
 
@@ -370,9 +644,9 @@ mod tests {
 
     use super::*;
     use crate::actions::{
-        ActionKind, BatchCancel, BatchModify, CancelByCloid, CancelWire,
-        LimitOrderType, OrderType, OrderWire, PreparedAction, SetOpenInterestCaps, SignedActionKind,
-        Tif, ToggleBigBlocks, UsdSend,
+        ActionKind, BatchCancel, BatchModify, CancelByCloid, CancelWire, LimitOrderType, OrderType,
+        OrderWire, PreparedAction, SetOpenInterestCaps, SignedActionKind, Tif, ToggleBigBlocks,
+        UsdSend,
     };
     use crate::SigningChain;
 
@@ -393,7 +667,10 @@ mod tests {
         let action = BatchModify::single(91_490_942, order);
         let v = build_action_value(&action, None).expect("build_action_value");
         let obj = v.as_object().expect("action object");
-        assert_eq!(obj.get("type").and_then(|x| x.as_str()), Some("batchModify"));
+        assert_eq!(
+            obj.get("type").and_then(|x| x.as_str()),
+            Some("batchModify")
+        );
         let modifies = obj.get("modifies").expect("top-level modifies");
         assert!(
             modifies.is_array(),
@@ -407,7 +684,10 @@ mod tests {
 
     #[test]
     fn batch_cancel_action_shape_matches_python_sdk() {
-        let action = BatchCancel::new(vec![CancelWire { a: 110_000, o: 12_345 }]);
+        let action = BatchCancel::new(vec![CancelWire {
+            a: 110_000,
+            o: 12_345,
+        }]);
         let v = build_action_value(&action, None).expect("build_action_value");
         let obj = v.as_object().expect("action object");
         assert_eq!(obj.get("type").and_then(|x| x.as_str()), Some("cancel"));
@@ -655,10 +935,10 @@ mod tests {
         let wrapper = super::L1ActionWrapper { action: &action };
         let got = rmp_serde::to_vec_named(&wrapper).unwrap();
         const EXPECTED: &[u8] = &[
-            0x84, 0xa4, 0x74, 0x79, 0x70, 0x65, 0xae, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4c, 0x65,
-            0x76, 0x65, 0x72, 0x61, 0x67, 0x65, 0xa5, 0x61, 0x73, 0x73, 0x65, 0x74, 0x0f, 0xa7, 0x69,
-            0x73, 0x43, 0x72, 0x6f, 0x73, 0x73, 0xc2, 0xa8, 0x6c, 0x65, 0x76, 0x65, 0x72, 0x61, 0x67,
-            0x65, 0x03,
+            0x84, 0xa4, 0x74, 0x79, 0x70, 0x65, 0xae, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4c,
+            0x65, 0x76, 0x65, 0x72, 0x61, 0x67, 0x65, 0xa5, 0x61, 0x73, 0x73, 0x65, 0x74, 0x0f,
+            0xa7, 0x69, 0x73, 0x43, 0x72, 0x6f, 0x73, 0x73, 0xc2, 0xa8, 0x6c, 0x65, 0x76, 0x65,
+            0x72, 0x61, 0x67, 0x65, 0x03,
         ];
         assert_eq!(got.as_slice(), EXPECTED);
     }
@@ -676,10 +956,10 @@ mod tests {
         let wrapper = super::L1ActionWrapper { action: &action };
         let got = rmp_serde::to_vec_named(&wrapper).unwrap();
         const EXPECTED: &[u8] = &[
-            0x84, 0xa4, 0x74, 0x79, 0x70, 0x65, 0xae, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4c, 0x65,
-            0x76, 0x65, 0x72, 0x61, 0x67, 0x65, 0xa5, 0x61, 0x73, 0x73, 0x65, 0x74, 0xcd, 0x01, 0x2c,
-            0xa7, 0x69, 0x73, 0x43, 0x72, 0x6f, 0x73, 0x73, 0xc3, 0xa8, 0x6c, 0x65, 0x76, 0x65, 0x72,
-            0x61, 0x67, 0x65, 0xcc, 0xc8,
+            0x84, 0xa4, 0x74, 0x79, 0x70, 0x65, 0xae, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4c,
+            0x65, 0x76, 0x65, 0x72, 0x61, 0x67, 0x65, 0xa5, 0x61, 0x73, 0x73, 0x65, 0x74, 0xcd,
+            0x01, 0x2c, 0xa7, 0x69, 0x73, 0x43, 0x72, 0x6f, 0x73, 0x73, 0xc3, 0xa8, 0x6c, 0x65,
+            0x76, 0x65, 0x72, 0x61, 0x67, 0x65, 0xcc, 0xc8,
         ];
         assert_eq!(got.as_slice(), EXPECTED);
     }
@@ -767,5 +1047,59 @@ mod tests {
             }
             other => panic!("expected ActionKind::Unknown, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn spot_send_regular_wire_order_matches_python_sdk() {
+        use crate::SpotTransfer;
+        use alloy::primitives::address;
+
+        let mut action = SpotTransfer::new(
+            address!("0x73c4c9fb0113f19d4d015e4ebb06ceaabc2b3cea"),
+            "HYPE:0x7317beb7cceed72ef0b346074cc8e7ab",
+            dec!(0.01),
+        );
+        action.nonce = Some(1_781_248_501_639);
+        let v = build_action_value(&action, Some(&SigningChain::Testnet)).unwrap();
+        let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(
+            keys,
+            vec![
+                "destination".to_string(),
+                "amount".to_string(),
+                "token".to_string(),
+                "time".to_string(),
+                "type".to_string(),
+                "signatureChainId".to_string(),
+                "hyperliquidChain".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn spot_send_multisig_inner_wire_order_matches_python_examples() {
+        use crate::SpotTransfer;
+        use alloy::primitives::address;
+
+        let mut action = SpotTransfer::new(
+            address!("0x73c4c9fb0113f19d4d015e4ebb06ceaabc2b3cea"),
+            "HYPE:0x7317beb7cceed72ef0b346074cc8e7ab",
+            dec!(0.01),
+        );
+        action.nonce = Some(1_781_248_501_639);
+        let v = build_multisig_inner_action_value(&action, &SigningChain::Testnet).unwrap();
+        let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(
+            keys,
+            vec![
+                "type".to_string(),
+                "signatureChainId".to_string(),
+                "hyperliquidChain".to_string(),
+                "destination".to_string(),
+                "token".to_string(),
+                "amount".to_string(),
+                "time".to_string(),
+            ]
+        );
     }
 }

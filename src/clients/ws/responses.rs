@@ -34,10 +34,7 @@ mod serde_decimal {
         let v = Value::deserialize(deserializer)?;
         match v {
             Value::String(s) => s.parse::<Decimal>().map_err(D::Error::custom),
-            Value::Number(n) => n
-                .to_string()
-                .parse::<Decimal>()
-                .map_err(D::Error::custom),
+            Value::Number(n) => n.to_string().parse::<Decimal>().map_err(D::Error::custom),
             _ => Err(D::Error::custom("expected string or number decimal")),
         }
     }
@@ -51,9 +48,7 @@ mod serde_decimal {
             None | Some(Value::Null) => Ok(None),
             Some(Value::String(s)) => Ok(Some(s.parse::<Decimal>().map_err(D::Error::custom)?)),
             Some(Value::Number(n)) => Ok(Some(
-                n.to_string()
-                    .parse::<Decimal>()
-                    .map_err(D::Error::custom)?,
+                n.to_string().parse::<Decimal>().map_err(D::Error::custom)?,
             )),
             Some(_) => Err(D::Error::custom("expected string or number decimal")),
         }
@@ -85,10 +80,7 @@ mod serde_decimal {
         for (k, v) in m {
             let d = match v {
                 Value::String(s) => s.parse::<Price>().map_err(D::Error::custom)?,
-                Value::Number(n) => n
-                    .to_string()
-                    .parse::<Price>()
-                    .map_err(D::Error::custom)?,
+                Value::Number(n) => n.to_string().parse::<Price>().map_err(D::Error::custom)?,
                 _ => return Err(D::Error::custom("mid price must be string or number")),
             };
             out.insert(k, d);
@@ -277,9 +269,15 @@ pub struct WsNonUserCancel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum WsUserEvent {
-    Fills { fills: Vec<WsFill> },
-    Funding { funding: WsUserFunding },
-    Liquidation { liquidation: WsLiquidation },
+    Fills {
+        fills: Vec<WsFill>,
+    },
+    Funding {
+        funding: WsUserFunding,
+    },
+    Liquidation {
+        liquidation: WsLiquidation,
+    },
     NonUserCancel {
         #[serde(rename = "nonUserCancel")]
         non_user_cancel: Vec<WsNonUserCancel>,

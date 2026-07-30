@@ -11,9 +11,7 @@ use hl_rs::{Subscription, WsClient, MAINNET_WS_URL};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let coin = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "SOL".to_string());
+    let coin = std::env::args().nth(1).unwrap_or_else(|| "SOL".to_string());
 
     let mut client = WsClient::connect(MAINNET_WS_URL).await?;
 
@@ -31,9 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    client
-        .unsubscribe(Subscription::Trades { coin })
-        .await?;
+    client.unsubscribe(Subscription::Trades { coin }).await?;
 
     Ok(())
 }

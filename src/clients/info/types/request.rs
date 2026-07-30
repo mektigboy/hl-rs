@@ -33,7 +33,10 @@ pub enum InfoRequest {
         oid: u64,
     },
     Meta,
-    MetaAndAssetCtxs,
+    MetaAndAssetCtxs {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        dex: Option<String>,
+    },
     SpotMeta,
     SpotMetaAndAssetCtxs,
     AllMids,
@@ -80,6 +83,16 @@ pub enum InfoRequest {
     UserRole {
         user: Address,
     },
+    UserToMultiSigSigners {
+        user: Address,
+    },
+    #[serde(rename = "userRateLimit")]
+    UserRateLimit {
+        user: Address,
+    },
+    UserAbstraction {
+        user: Address,
+    },
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -89,4 +102,16 @@ pub struct CandleSnapshotRequest {
     interval: String,
     start_time: u64,
     end_time: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn meta_and_asset_ctxs_request_omits_null_dex() {
+        let req = InfoRequest::MetaAndAssetCtxs { dex: None };
+        let json = serde_json::to_string(&req).unwrap();
+        assert_eq!(json, r#"{"type":"metaAndAssetCtxs"}"#);
+    }
 }

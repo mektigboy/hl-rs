@@ -51,7 +51,7 @@ impl SigningChain {
     pub(crate) fn get_signature_chain_id(&self) -> u64 {
         match self {
             SigningChain::Testnet => 421614,
-            SigningChain::Mainnet => 42161,
+            SigningChain::Mainnet => 421614,
             #[cfg(feature = "custom-signing-chain")]
             SigningChain::Custom {
                 signature_chain_id, ..
@@ -129,6 +129,7 @@ impl CoinToAsset {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Meta {
     pub universe: Vec<AssetMeta>,
+    pub collateral_token: Option<u32>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -240,6 +241,10 @@ pub struct TokenInfo {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PerpDex {
+    /// Protocol perp-dex index. The default dex is index 0 and is not returned.
+    /// Deployed dexes start at 1.
+    #[serde(skip_deserializing, default)]
+    pub id: u32,
     pub name: String,
     pub full_name: String,
     pub deployer: String,

@@ -7,13 +7,13 @@ use hl_rs::{BaseUrl, ExchangeClient, SetOpenInterestCaps};
 async fn main() {
     dotenv::dotenv().unwrap();
 
-    let url = BaseUrl::Testnet;
-    let dex_name = "dddd";
-    let oi_cap = 10_000_000; // $10M OI cap
+    let url = BaseUrl::Mainnet;
+    let dex_name = "km";
+    let oi_cap = 40_000; // $10M OI cap
 
     // Set open interest caps for multiple assets at once
     // Caps must be at least max(1_000_000, half of current OI)
-    let action = SetOpenInterestCaps::new(dex_name, vec![("US500", oi_cap * 1_000_000)]);
+    let action = SetOpenInterestCaps::new(dex_name, vec![("GLDMINE", oi_cap * 1_000_000)]);
 
     let private_key = std::env::var("PRIVATE_KEY").unwrap();
     let wallet = PrivateKeySigner::from_str(&private_key).unwrap();

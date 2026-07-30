@@ -65,9 +65,7 @@ async fn ws_active_asset_ctx_live_receives_message() {
         .expect("connect to HL_WS_URL / mainnet");
 
     client
-        .subscribe(Subscription::ActiveAssetCtx {
-            coin: coin.clone(),
-        })
+        .subscribe(Subscription::ActiveAssetCtx { coin: coin.clone() })
         .await
         .expect("subscribe activeAssetCtx");
 

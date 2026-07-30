@@ -6,7 +6,10 @@ use crate::{
     http::HttpClient,
     info::{
         client_builder::InfoClientBuilder,
-        types::{InfoRequest, UserRoleResponse},
+        types::{
+            InfoRequest, L2SnapshotResponse, MetaAndAssetCtxsResponse, UserAbstractionResponse,
+            UserRateLimit, UserRoleResponse, UserStateResponse, UserToMultiSigSignersResponse,
+        },
     },
     prelude::{Error, Result},
     types::{Meta, PerpDeployAuctionStatus, PerpDex, PerpDexStatus, SpotMeta, UserStakingSummary},
@@ -23,7 +26,7 @@ impl InfoClient {
         InfoClientBuilder::new(base_url)
     }
 
-    async fn send_request<T: for<'a> Deserialize<'a>>(
+    pub async fn send_request<T: for<'a> Deserialize<'a>>(
         &self,
         info_request: InfoRequest,
     ) -> Result<T> {
@@ -33,6 +36,18 @@ impl InfoClient {
 
     pub async fn meta(&self) -> Result<Meta> {
         self.send_request(InfoRequest::Meta).await
+    }
+
+    /// Retrieve perpetual metadata and asset contexts.
+    ///
+    /// Pass `dex` to query a HIP-3 dex; omit it for the default clearinghouse.
+    ///
+    /// See [Retrieve perpetuals metadata (universe and margin tables)](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables).
+    pub async fn meta_and_asset_ctxs(&self, dex: Option<&str>) -> Result<MetaAndAssetCtxsResponse> {
+        self.send_request(InfoRequest::MetaAndAssetCtxs {
+            dex: dex.map(str::to_string),
+        })
+        .await
     }
 
     pub async fn spot_meta(&self) -> Result<SpotMeta> {
@@ -64,12 +79,13 @@ impl InfoClient {
             return Err(Error::Api(ApiError::Other { message: error }));
         }
 
-        // Rest are DEX objects
-        let dexs: Vec<PerpDex> = response[1..]
-            .iter()
-            .map(|v| serde_json::from_value(v.clone()))
-            .collect::<std::result::Result<Vec<_>, serde_json::Error>>()
-            .map_err(|e| Error::JsonParse(e.to_string()))?;
+        let mut dexs = Vec::with_capacity(response.len().saturating_sub(1));
+        for (i, value) in response[1..].iter().enumerate() {
+            let mut dex: PerpDex = serde_json::from_value(value.clone())
+                .map_err(|e| Error::JsonParse(e.to_string()))?;
+            dex.id = (i as u32) + 1;
+            dexs.push(dex);
+        }
 
         Ok(dexs)
     }
@@ -89,6 +105,57 @@ impl InfoClient {
     pub async fn user_role(&self, user: &Address) -> Result<UserRoleResponse> {
         self.send_request(InfoRequest::UserRole {
             user: user.to_owned(),
+        })
+        .await
+    }
+
+    /// Returns multisig signer configuration for a user, if the user is multisig-enabled.
+    ///
+    /// The API may return `null` when the user is not a multisig user, which maps to `None`.
+    pub async fn user_to_multisig_signers(
+        &self,
+        user: &Address,
+    ) -> Result<Option<UserToMultiSigSignersResponse>> {
+        self.send_request(InfoRequest::UserToMultiSigSigners {
+            user: user.to_owned(),
+        })
+        .await
+    }
+
+    /// Query a user's API rate limit state.
+    ///
+    /// See [Query user rate limits](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-user-rate-limits).
+    pub async fn user_rate_limit(&self, user: &Address) -> Result<UserRateLimit> {
+        self.send_request(InfoRequest::UserRateLimit {
+            user: user.to_owned(),
+        })
+        .await
+    }
+
+    /// Query a user's perp clearinghouse state, including `withdrawable` USDC and margin summaries.
+    ///
+    /// See [`clearinghouseState`](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-users-perpetuals-account-summary).
+    pub async fn user_state(&self, user: &Address) -> Result<UserStateResponse> {
+        self.send_request(InfoRequest::UserState {
+            user: user.to_owned(),
+        })
+        .await
+    }
+
+    /// Query a user's account abstraction mode.
+    ///
+    /// See [Query a user's abstraction state](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-a-users-abstraction-state).
+    pub async fn user_abstraction(&self, user: &Address) -> Result<UserAbstractionResponse> {
+        self.send_request(InfoRequest::UserAbstraction {
+            user: user.to_owned(),
+        })
+        .await
+    }
+
+    /// L2 order book snapshot for a coin (perp symbol or spot `@index`).
+    pub async fn l2_book(&self, coin: &str) -> Result<L2SnapshotResponse> {
+        self.send_request(InfoRequest::L2Book {
+            coin: coin.to_string(),
         })
         .await
     }
@@ -131,6 +198,14 @@ mod tests {
         let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
         let perp_dexs = info_client.perp_dexs().await.unwrap();
         println!("{:?}", perp_dexs);
+
+        for (i, dex) in perp_dexs.iter().enumerate() {
+            assert_eq!(
+                dex.id,
+                (i as u32) + 1,
+                "dex ids must be sequential starting at 1"
+            );
+        }
     }
 
     #[tokio::test]
@@ -145,5 +220,54 @@ mod tests {
         let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
         let perp_deploy_auction_status = info_client.perp_deploy_auction_status().await.unwrap();
         println!("{:?}", perp_deploy_auction_status);
+    }
+
+    #[tokio::test]
+    async fn test_user_to_multisig_signers() {
+        let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
+        let user_to_multisig_signers = info_client
+            .user_to_multisig_signers(
+                &Address::from_str("0x2C8b738ED0735943CAB99BDBc5dC299813c08E91").unwrap(),
+            )
+            .await
+            .unwrap();
+        println!("{:?}", user_to_multisig_signers);
+    }
+
+    #[tokio::test]
+    async fn test_meta_and_asset_ctxs() {
+        let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
+        let response = info_client.meta_and_asset_ctxs(None).await.unwrap();
+        assert_eq!(
+            response.meta.universe.len(),
+            response.asset_ctxs.len(),
+            "meta universe and asset ctx lengths must match",
+        );
+        println!("{:?}", response.meta.universe.first());
+        println!("{:?}", response.asset_ctxs.first());
+    }
+
+    #[tokio::test]
+    async fn test_user_abstraction() {
+        let info_client = InfoClient::builder(BaseUrl::Mainnet).build().unwrap();
+        let abstraction = info_client
+            .user_abstraction(
+                &Address::from_str("0x57424C45b9f21903f6496A619FE6145dF881317e").unwrap(),
+            )
+            .await
+            .unwrap();
+        println!("{:?}", abstraction);
+    }
+
+    #[tokio::test]
+    async fn test_user_rate_limit() {
+        let info_client = InfoClient::builder(BaseUrl::Testnet).build().unwrap();
+        let rate_limit = info_client
+            .user_rate_limit(
+                &Address::from_str("0x1234567890123456789012345678901234567890").unwrap(),
+            )
+            .await
+            .unwrap();
+        println!("{:?}", rate_limit);
     }
 }

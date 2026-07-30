@@ -10,8 +10,14 @@ pub use trading::*;
 mod toggle_big_blocks;
 pub use toggle_big_blocks::ToggleBigBlocks;
 
+mod reserve_request_weight;
+pub use reserve_request_weight::ReserveRequestWeight;
+
 mod no_op;
 pub use no_op::NoOp;
+
+mod claim_rewards;
+pub use claim_rewards::ClaimRewards;
 
 mod set_referrer;
 pub use set_referrer::SetReferrer;

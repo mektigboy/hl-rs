@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use alloy::primitives::Address;
+
+use crate::types::{AssetContext, Meta};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -332,4 +334,60 @@ pub struct AgentRoleData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubAccountRoleData {
     pub master: Address,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserToMultiSigSignersResponse {
+    pub authorized_users: Vec<Address>,
+    pub threshold: u32,
+}
+
+/// Account abstraction mode from the `userAbstraction` info request.
+///
+/// See [Query a user's abstraction state](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-a-users-abstraction-state).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum UserAbstractionResponse {
+    #[serde(rename = "default")]
+    Default,
+    UnifiedAccount,
+    PortfolioMargin,
+    Disabled,
+    DexAbstraction,
+}
+
+/// Perpetual metadata and asset contexts from the `metaAndAssetCtxs` info request.
+///
+/// The API returns a two-element JSON array: `[meta, assetCtxs]`.
+///
+/// See [Retrieve perpetuals metadata (universe and margin tables)](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables).
+#[derive(Debug, Clone)]
+pub struct MetaAndAssetCtxsResponse {
+    pub meta: Meta,
+    pub asset_ctxs: Vec<AssetContext>,
+}
+
+impl<'de> Deserialize<'de> for MetaAndAssetCtxsResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (meta, asset_ctxs) = <(Meta, Vec<AssetContext>)>::deserialize(deserializer)?;
+        Ok(Self { meta, asset_ctxs })
+    }
+}
+
+/// User API rate limit state from the `userRateLimit` info request.
+///
+/// See [Query user rate limits](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-user-rate-limits).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserRateLimit {
+    pub cum_vlm: String,
+    /// `max(0, cumulative_used - reserved)`
+    pub n_requests_used: u64,
+    pub n_requests_cap: u64,
+    /// `max(0, reserved - cumulative_used)`
+    pub n_requests_surplus: u64,
 }

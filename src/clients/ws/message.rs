@@ -281,7 +281,9 @@ fn parse_ws_message(v: Value) -> Result<WsMessage, String> {
 
     macro_rules! typed {
         ($variant:ident, $t:ty) => {{
-            let d = data.clone().ok_or_else(|| format!("missing \"data\" for {channel}"))?;
+            let d = data
+                .clone()
+                .ok_or_else(|| format!("missing \"data\" for {channel}"))?;
             let inner: $t = serde_json::from_value(d).map_err(|e| e.to_string())?;
             Ok(WsMessage::$variant {
                 data: inner,

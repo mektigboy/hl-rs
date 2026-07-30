@@ -10,6 +10,9 @@ pub use set_oracle::SetOracle;
 mod set_fee_recipient;
 pub use set_fee_recipient::SetFeeRecipient;
 
+mod set_fee_scale;
+pub use set_fee_scale::SetFeeScale;
+
 mod set_funding_multipliers;
 pub use set_funding_multipliers::SetFundingMultipliers;
 
@@ -38,6 +41,12 @@ pub use set_perp_annotation::{
 
 mod register_asset;
 pub use register_asset::{AssetRequest, PerpDexSchema, RegisterAsset};
+
+mod migrate_dex_quote_token;
+pub use migrate_dex_quote_token::MigrateDexQuoteToken;
+
+mod disable_dex;
+pub use disable_dex::DisableDex;
 
 #[macro_export]
 macro_rules! flatten_vec {

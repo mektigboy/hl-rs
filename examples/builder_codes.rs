@@ -19,7 +19,7 @@
 
 use std::str::FromStr;
 
-use alloy::primitives::{Address, address};
+use alloy::primitives::{address, Address};
 use alloy::signers::local::PrivateKeySigner;
 use hl_rs::{
     ApproveBuilderFee, BaseUrl, BatchOrder, BuilderInfo, ExchangeClient, LimitOrderType, OrderType,
@@ -42,7 +42,7 @@ async fn main() {
         .unwrap_or(10_000 + 1338);
 
     let builder_f: u32 = 10;
-    let max_fee_rate= dec!(10);
+    let max_fee_rate = dec!(10);
 
     let url = BaseUrl::Testnet;
     let wallet_addr = wallet.address();

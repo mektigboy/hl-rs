@@ -11,6 +11,8 @@ use serde_json::Value;
 
 mod core;
 mod l1_actions;
+mod multisig;
+mod multisig_validation;
 mod serialization;
 mod signing;
 mod traits;
@@ -18,10 +20,20 @@ mod user_signed_actions;
 
 pub use core::{PreparedAction, SignedAction, SignedActionKind};
 pub use l1_actions::*;
+pub use multisig::{
+    assemble_signed_multisig_action, build_multisig_action, multisig_inner_signing_hash,
+    multisig_inner_user_signed_signing_hash, multisig_outer_signing_hash, MultiSigAction,
+    MultiSigPayload, MultiSigSigningPayload, MultisigSigningHashes, SignedMultiSigAction,
+};
+pub use multisig_validation::{
+    validate_multisig_l1_action, validate_multisig_user_signed_action, MultiSigRequest,
+    MultiSigRequestAction, MultiSigRequestPayload, MultisigValidation, MultisigValidationError,
+};
 pub use traits::{Action, L1Action, UserSignedAction};
 pub use user_signed_actions::*;
 
 pub(crate) use serialization::L1ActionWrapper;
+pub(crate) use serialization::{build_action_value, build_multisig_inner_action_value};
 pub(crate) use signing::{agent_signing_hash, compute_l1_hash, SigningMeta};
 
 /// Macro that generates both the `ActionKind` enum and the runtime dispatcher.
@@ -115,13 +127,16 @@ impl_action_kind![
     UsdClassTransfer,
     SendAsset,
     UserDexAbstraction,
+    UserSetAbstraction,
     TokenDelegate,
     ConvertToMultiSigUser,
     ApproveAgent,
     ApproveBuilderFee,
     // L1 actions (flatten types)
     ToggleBigBlocks,
+    ReserveRequestWeight,
     NoOp,
+    ClaimRewards,
     SetReferrer,
     CreateSubAccount,
     SubAccountTransfer,
@@ -144,10 +159,13 @@ impl_action_kind![
     ToggleTrading,
     SetOracle,
     SetFeeRecipient,
+    SetFeeScale,
     SetFundingMultipliers,
     SetFundingInterestRates,
     SetMarginTableIds,
     InsertMarginTable,
+    MigrateDexQuoteToken,
+    DisableDex,
     SetSubDeployers,
     SetGrowthModes,
     SetMarginModes,
