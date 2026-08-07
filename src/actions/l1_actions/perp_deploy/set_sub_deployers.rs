@@ -169,6 +169,8 @@ pub enum SubDeployerVariant {
     SetPerpAnnotation,
     /// Permission to disable the DEX.
     DisableDex,
+    /// Permission to set the deployer fee scale with per asset granularity.
+    SetDeployerFees
 }
 
 impl SetSubDeployers {
